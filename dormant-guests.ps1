@@ -17,7 +17,7 @@ Get-MgUser -All -Property Id,AccountEnabled,SignInActivity,DisplayName,UserPrinc
         -not $_.SignInActivity.LastSignInDateTime -or
         [DateTime]$_.SignInActivity.LastSignInDateTime -lt $threshold
     )
-}
+} `
 | Select-Object DisplayName,
                 UserPrincipalName,
                 @{
@@ -37,6 +37,6 @@ Get-MgUser -All -Property Id,AccountEnabled,SignInActivity,DisplayName,UserPrinc
                             "Never Signed In"
                         }
                     }
-                }
-| Select-Object -First 50
+                } `
+| Select-Object -First 50 `
 | Export-Csv -Path "./dormant-guests.csv" -NoTypeInformation -Encoding UTF8
