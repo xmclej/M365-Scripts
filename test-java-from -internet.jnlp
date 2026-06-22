@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<jnlp spec="1.0+" codebase="http://example.com">
+<information>
+<title>Test Applet</title>
+<vendor>Test</vendor>
+</information>
+<application-desc main-class="Test"/>
+</jnlp>
