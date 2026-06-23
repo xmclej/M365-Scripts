@@ -11,6 +11,6 @@ Get-MgUser -All -Property “Id,AccountEnabled,SignInActivity” `
     )
 } `
 | Select-Object -First 50 `
-| ForEach-Object {
-Update-MgUser -UserId $_.Id -AccountEnabled:$false
-}
+#| ForEach-Object {
+#Update-MgUser -UserId $_.Id -AccountEnabled:$false
+#}
