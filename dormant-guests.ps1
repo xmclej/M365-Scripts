@@ -40,3 +40,4 @@ Get-MgUser -All -Property Id,AccountEnabled,SignInActivity,DisplayName,UserPrinc
                 } `
 | Select-Object -First 50 `
 | Export-Csv -Path "./dormant-guests.csv" -NoTypeInformation -Encoding UTF8
+
