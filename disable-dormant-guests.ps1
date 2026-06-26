@@ -1,41 +1,52 @@
-Connect-MgGraph -NoWelcome -Scopes "User.Read.All","User.ReadWrite.All"
+Connect-MgGraph -NoWelcome -Scopes "User.Read.All","User.ReadWrite.All","AuditLog.Read.All"
 
 $threshold = (Get-Date).AddDays(-45)
 
-Get-MgUser -All -Property Id,AccountEnabled,SignInActivity,DisplayName,UserPrincipalName,UserType `
+$exclude = @(
+    "agoodwin_rcp.co.nz#EXT#@sitesafenz.onmicrosoft.com"
+)
+
+# Step 1: Get all dormant guests
+$dormantGuests = Get-MgUser -All -Property Id,AccountEnabled,SignInActivity,DisplayName,UserPrincipalName,UserType `
 | Where-Object {
     $_.AccountEnabled -eq $true -and
     $_.UserType -eq "Guest" -and (
         -not $_.SignInActivity.LastSignInDateTime -or
         [DateTime]$_.SignInActivity.LastSignInDateTime -lt $threshold
     )
-} `
-| Select-Object DisplayName,
-                UserPrincipalName,
-                @{
-                    Name='UserType'
-                    Expression = { $_.UserType }
-                },
-                @{
-                    Name='LastSignIn'
-                    Expression = { $_.SignInActivity.LastSignInDateTime }
-                },
-                @{
-                    Name='SignInStatus'
-                    Expression = {
-                        if ($_.SignInActivity.LastSignInDateTime) {
-                            "Inactive"
-                        } else {
-                            "Never Signed In"
-                        }
-                    }
-                } `
-| Select-Object -First 50 `
-| Export-Csv -Path "./disable-dormant-guests.csv" -NoTypeInformation -Encoding UTF8
+}
 
+# Step 2: Take the first 50 BEFORE exclusions
+$first50 = $dormantGuests | Select-Object -First 50
 
+# Step 3: Apply exclusions
+$finalList = $first50 | Where-Object {
+    $exclude -notcontains $_.UserPrincipalName
+}
 
+# Step 4: Export
+$finalList | Select-Object Id,
+                           DisplayName,
+                           UserPrincipalName,
+                           UserType,
+                           @{
+                               Name='LastSignIn'
+                               Expression = { $_.SignInActivity.LastSignInDateTime }
+                           },
+                           @{
+                               Name='SignInStatus'
+                               Expression = {
+                                   if ($_.SignInActivity.LastSignInDateTime) {
+                                       "Inactive"
+                                   } else {
+                                       "Never Signed In"
+                                   }
+                               }
+                           } `
+| Export-Csv -Path "./disable-dormant-guests.csv" -NoTypeInformation -Encoding UTF8 `
 
-#| ForEach-Object {
-#Update-MgUser -UserId $_.Id -AccountEnabled:$false
-#}
+# Step 5: Disable accounts
+# $finalList | ForEach-Object {
+#     Update-MgUser -UserId $_.Id -AccountEnabled:$false
+# }
+
