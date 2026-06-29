@@ -2,8 +2,8 @@
 
 This repository contains two PowerShell scripts designed to safely identify and optionally clean up stale objects in Microsoft Entra ID:
 
-- ✅ [Device Cleanup Script] (stale-device-review.md)
-- ✅ [User Cleanup Script] (dormant-user-review.md)
+- ✅ [**Device Cleanup Script**](stale-device-review.md)
+- ✅ [**User Cleanup Script**](dormant-user-review.md)
 
 Both scripts follow the same design principles:
 
