@@ -31,7 +31,7 @@ $outputPrivileged     = ".\UserCleanup_PRIVILEGED_$timestamp.csv"
 
 Write-Host ""
 Write-Host "Starting user inactivity review..."
-Write-Host "Dormant cutoff: $userCutoff"
+Write-Host "Dormant cutoff: $($userCutoff.ToString('dd/MM/yyyy HH:mm:ss'))"
 
 # -----------------------------
 # GET USERS (important properties)
@@ -45,10 +45,14 @@ Write-Host "Total users: $($users.Count)"
 # -----------------------------
 # LOAD EXCLUSIONS
 # -----------------------------
-function Load-UPNList {
-    param($path)
+function Read-UPNList {
+    param(
+        [string]$path,
+        [string]$label
+    )
 
     $list = @{}
+
     if (Test-Path $path) {
         $csv = Import-Csv $path
         foreach ($row in $csv) {
@@ -56,43 +60,17 @@ function Load-UPNList {
                 $list[$row.UserPrincipalName.Trim().ToLower()] = $true
             }
         }
+        Write-Host "Loaded $label $($list.Count)"
     }
+    else {
+        Write-Warning "$label file not found: $path"
+    }
+
     return $list
 }
 
-$excludedUsers  = Load-UPNList $exclusionFile
-$emergencyUsers = Load-UPNList $emergencyFile
-
-$excludedUsers = @{}
-
-if (Test-Path $exclusionFile) {
-    $csv = Import-Csv $exclusionFile
-
-    foreach ($row in $csv) {
-
-        # Support multiple column names
-        $upn = $null
-
-        if ($row.UserPrincipalName) {
-            $upn = $row.UserPrincipalName
-        }
-        # elseif ($row.UPN) {
-        #     $upn = $row.UPN
-        # }
-        # elseif ($row.Email) {
-        #     $upn = $row.Email
-        # }
-
-        if ($upn) {
-            $excludedUsers[$upn.Trim().ToLower()] = $true
-        }
-    }
-
-    Write-Host "Loaded exclusions: $($excludedUsers.Count)"
-}
-else {
-    Write-Warning "Exclusion file not found: $exclusionFile"
-}
+$excludedUsers  = Read-UPNList $exclusionFile  "Exclusions"
+$emergencyUsers = Read-UPNList $emergencyFile  "Emergency accounts"
 
 # -----------------------------
 # GET PRIVILEGED ROLE MEMBERS
@@ -209,8 +187,9 @@ foreach ($user in $users) {
         UserPrincipalName  = $user.UserPrincipalName
         UserType           = $user.UserType
         AccountEnabled     = $user.AccountEnabled
-        CreatedDate        = $user.CreatedDateTime
-        LastSignIn         = $lastSignIn
+        CreatedDate        = if ($user.CreatedDateTime) { $user.CreatedDateTime.ToString('dd/MM/yyyy') } else { $null }
+        LastSignIn         = if ($lastSignIn) { $lastSignIn.ToString('dd/MM/yyyy') } else { $null }
+
         IsLicensed         = $isLicensed
 
         IsExcluded         = $isExcluded
@@ -236,8 +215,7 @@ $membersTop50 = $results |
 
 $guestsTop50 = $results |
     Where-Object { 
-        $_.Classification -eq "GUEST" -and 
-        # $isInactive -and
+        $_.Classification -eq "GUEST" -and
         $_.AccountEnabled -eq $true
     } |
     Sort-Object LastSignIn | Select-Object -First 50
@@ -262,7 +240,7 @@ Write-Host ""
 Write-Host "Safe to disable (Members): $($membersTop50.Count)"
 Write-Host "Safe to disable (Guests): $($guestsTop50.Count)"
 Write-Host ""
-Write-Host "Already disabled:   $($results | Where-Object {$_.Classification -eq 'ALREADY_DISABLED'} | Measure-Object | % Count)"
+Write-Host "Already disabled:   $($results | Where-Object {$_.Classification -eq 'ALREADY_DISABLED'} | Measure-Object | ForEach-Object Count)"
 Write-Host ""
 Write-Host "Exclusions:"
 Write-Host "  CSV exclusions: $($excludedUsers.Count)"

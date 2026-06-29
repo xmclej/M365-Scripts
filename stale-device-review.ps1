@@ -200,7 +200,7 @@ foreach ($device in $entraDevices) {
         DeviceName          = $device.DisplayName
         EntraDeviceId       = $device.DeviceId
         OperatingSystem     = $device.OperatingSystem
-        ApproxLastSignIn    = $device.ApproximateLastSignInDateTime
+        ApproxLastSignIn    = if ($device.ApproximateLastSignInDateTime) {$device.ApproximateLastSignInDateTime.ToString('dd/MM/yyyy')} else {$null}
         IsInIntune          = $isInIntune
         MatchConfidence     = $confidence
         DataQuality         = $dataQuality
@@ -243,9 +243,9 @@ Write-Host "Entra only:           $($entraOnly.Count)"
 
 Write-Host ""
 Write-Host "Confidence:"
-Write-Host "  High:   $($results | Where-Object {$_.MatchConfidence -eq 'High'} | Measure-Object | % Count)"
-Write-Host "  Medium: $($results | Where-Object {$_.MatchConfidence -eq 'Medium'} | Measure-Object | % Count)"
-Write-Host "  Low:    $($results | Where-Object {$_.MatchConfidence -eq 'Low'} | Measure-Object | % Count)"
+Write-Host "  High:   $($results | Where-Object {$_.MatchConfidence -eq 'High'} | Measure-Object | ForEach-Object Count)"
+Write-Host "  Medium: $($results | Where-Object {$_.MatchConfidence -eq 'Medium'} | Measure-Object | ForEach-Object Count)"
+Write-Host "  Low:    $($results | Where-Object {$_.MatchConfidence -eq 'Low'} | Measure-Object | ForEach-Object Count)"
 
 # -----------------------------
 # OPTIONAL DELETE STAGE
