@@ -2,27 +2,30 @@ Connect-MgGraph -NoWelcome -Scopes "User.Read.All","User.ReadWrite.All","AuditLo
 
 $threshold = (Get-Date).AddDays(-45)
 
-# Exclusion list for guests
-$exclude = @(
-    "agoodwin_rcp.co.nz#EXT#@sitesafenz.onmicrosoft.com"
-)
+$exclude = Import-Csv "./guests-exclusion.csv" |
+    Select-Object -ExpandProperty UserPrincipalName |
+    ForEach-Object { $_.Trim() }
 
-# Step 1: Get all dormant guests WITH exclusions applied here
+# Step 1: Get all dormant guests 
 $dormantGuests = Get-MgUser -All -Property Id,AccountEnabled,SignInActivity,DisplayName,UserPrincipalName,UserType `
 | Where-Object {
     $_.AccountEnabled -eq $true -and
     $_.UserType -eq "Guest" -and
-    ($exclude -notcontains $_.UserPrincipalName) -and
     (
         -not $_.SignInActivity.LastSignInDateTime -or
         [DateTime]$_.SignInActivity.LastSignInDateTime -lt $threshold
     )
 }
 
-# Step 2: Take the first 50 AFTER exclusions
-$finalList = $dormantGuests | Select-Object -First 50
+# Step 2: Take guests
+$first50 = $dormantGuests | Select-Object -First 58
 
-# Step 3: Export
+# Step 3: Apply exclusions 
+$finalList = $first50 | Where-Object {
+    $_.UserPrincipalName -notin $exclude
+}
+
+# Step 4: Export
 $finalList | Select-Object Id,
                            DisplayName,
                            UserPrincipalName,
@@ -43,7 +46,14 @@ $finalList | Select-Object Id,
                            } `
 | Export-Csv -Path "./disable-dormant-guests.csv" -NoTypeInformation -Encoding UTF8
 
-# Step 4: Disable accounts (uncomment when ready)
+# Step 5: Disable accounts with failure output
 # $finalList | ForEach-Object {
-#     Update-MgUser -UserId $_.Id -AccountEnabled:$false
+#     $user = $_   # capture the user object
+#     try {
+#         Update-MgUser -UserId $user.Id -AccountEnabled:$false -ErrorAction Stop
+#         Write-Host "Disabled: $($user.UserPrincipalName)" -ForegroundColor Green
+#     }
+#     catch {
+#         Write-Host "FAILED to disable: $($user.UserPrincipalName)" -ForegroundColor Red
+#     }
 # }

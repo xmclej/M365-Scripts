@@ -2,38 +2,31 @@ Connect-MgGraph -NoWelcome -Scopes "User.Read.All","User.ReadWrite.All","AuditLo
 
 $threshold = (Get-Date).AddDays(-45)
 
-# Exclusion list
-$exclude = @(
-    "accountspayable@sitesafe.org.nz",
-    "BCTEST01@sitesafe.org.nz",
-    "BCTEST02@sitesafe.org.nz",
-    "board_room_christchurch@sitesafe.org.nz",
-    "careers@sitesafe.org.nz",
-    "chchbookings@sitesafe.org.nz",
-    "comments@sitesafe.org.nz",
-    "denise_makocommercial.co.nz#EXT#@sitesafenz.onmicrosoft.com",
-    "dunedintrainingroom@sitesafe.org.nz",
-    "graphicdesign@sitesafe.org.nz",
-    "help@sitesafe.org.nz",
-    "Ignatuis_precisionconstruction.co.nz#EXT#@sitesafenz.onmicrosoft.com"
-)
+# Load exclusions from CSV 
+$exclude = Import-Csv "./members-exclusion.csv" |
+    Select-Object -ExpandProperty UserPrincipalName |
+    ForEach-Object { $_.Trim() }
 
-# Step 1: Get all dormant members WITH exclusions applied here
+# Step 1: Get all dormant members 
 $dormantMembers = Get-MgUser -All -Property Id,AccountEnabled,SignInActivity,DisplayName,UserPrincipalName,UserType `
 | Where-Object {
     $_.AccountEnabled -eq $true -and
     $_.UserType -eq "Member" -and
-    ($exclude -notcontains $_.UserPrincipalName) -and
     (
         -not $_.SignInActivity.LastSignInDateTime -or
         [DateTime]$_.SignInActivity.LastSignInDateTime -lt $threshold
     )
 }
 
-# Step 2: Take the first 50 AFTER exclusions
-$finalList = $dormantMembers | Select-Object -First 50
+# Step 2: Take the first 100 users
+$first50 = $dormantMembers | Select-Object -First 100
 
-# Step 3: Export
+# Step 3: Apply exclusions
+$finalList = $first50 | Where-Object {
+    $_.UserPrincipalName -notin $exclude
+}
+
+# Step 4: Export
 $finalList | Select-Object Id,
                            DisplayName,
                            UserPrincipalName,
@@ -54,7 +47,14 @@ $finalList | Select-Object Id,
                            } `
 | Export-Csv -Path "./disable-dormant-members.csv" -NoTypeInformation -Encoding UTF8
 
-# Step 4: Disable accounts (uncomment when ready)
+#Step 5: Disable accounts with failure output
 # $finalList | ForEach-Object {
-#     Update-MgUser -UserId $_.Id -AccountEnabled:$false
+#     $user = $_
+#     try {
+#         Update-MgUser -UserId $user.Id -AccountEnabled:$false -ErrorAction Stop
+#         Write-Host "Disabled: $($user.UserPrincipalName)" -ForegroundColor Green
+#     }
+#     catch {
+#         Write-Host "FAILED to disable: $($user.UserPrincipalName)" -ForegroundColor Red
+#     }
 # }
