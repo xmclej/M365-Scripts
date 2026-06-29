@@ -165,6 +165,7 @@ foreach ($device in $entraDevices) {
     }
 
     # Data quality
+    
     if ($matchById) {
         $dataQuality = "High"
     }
@@ -234,11 +235,11 @@ $toKeep        | Export-Csv $outputKeep -NoTypeInformation
 Write-Host ""
 Write-Host "SUMMARY"
 Write-Host "-------"
-Write-Host "Safe to delete:      $($toDeleteFull.Count)"
-Write-Host "Top 50 ready:        $($toDeleteTop50.Count)"
-Write-Host "Intune missing ID:   $($intuneMissingId.Count)"
-Write-Host "Intune only:         $($intuneOnly.Count)"
-Write-Host "Entra only:          $($entraOnly.Count)"
+Write-Host "Entra-Safe to delete: $($toDeleteFull.Count)"
+Write-Host "Entra-Top 50 ready:   $($toDeleteTop50.Count)"
+Write-Host "Intune missing ID:    $($intuneMissingId.Count)"
+Write-Host "Intune only:          $($intuneOnly.Count)"
+Write-Host "Entra only:           $($entraOnly.Count)"
 
 Write-Host ""
 Write-Host "Confidence:"
