@@ -1,5 +1,5 @@
 # Microsoft Graph
-Connect-MgGraph -NoWelcome -Scopes "User.Read.All","AuditLog.Read.All","Directory.Read.All"
+Connect-MgGraph -NoWelcome -Scopes "User.Read.All","AuditLog.Read.All","Directory.Read.All","RoleManagement.Read.Directory"
 
 # -----------------------------
 # CONFIGURATION
@@ -7,14 +7,12 @@ Connect-MgGraph -NoWelcome -Scopes "User.Read.All","AuditLog.Read.All","Director
 $userInactiveDays = 120
 $userCutoff = (Get-Date).AddDays(-$userInactiveDays)
 
-# Path to exclusion CSV
-$exclusionFile = ".\ExcludedAccounts.csv"
+$exclusionFile = ".\UserExclusions.csv"
 $emergencyFile = ".\EmergencyAccounts.csv"
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 
-
-$outputAll        = ".\UserCleanup_FULL_$timestamp.csv"
+$outputAll            = ".\UserCleanup_FULL_$timestamp.csv"
 
 $outputMembers        = ".\UserCleanup_MEMBERS_$timestamp.csv"
 $outputMembersTop50   = ".\UserCleanup_MEMBERS_TOP50_$timestamp.csv"
@@ -24,23 +22,11 @@ $outputGuestsTop50    = ".\UserCleanup_GUESTS_TOP50_$timestamp.csv"
 
 $outputPrivileged     = ".\UserCleanup_PRIVILEGED_$timestamp.csv"
 
-# $outputDormant    = ".\UserCleanup_DORMANT_$timestamp.csv"
-# $outputTop50      = ".\UserCleanup_DORMANT_TOP50_$timestamp.csv"
-# $outputActive     = ".\UserCleanup_ACTIVE_$timestamp.csv"
-# $outputGuests     = ".\UserCleanup_GUESTS_$timestamp.csv"
-
-Write-Host ""
-Write-Host "Starting user inactivity review..."
-Write-Host "Dormant cutoff: $userCutoff"
-
 # -----------------------------
-# GET USERS (important properties)
+# GET USERS
 # -----------------------------
 $users = Get-MgUser -All -Property `
 "id,displayName,userPrincipalName,accountEnabled,userType,createdDateTime,assignedLicenses,signInActivity"
-
-Write-Host ""
-Write-Host "Total users: $($users.Count)"
 
 # -----------------------------
 # LOAD EXCLUSIONS
@@ -56,43 +42,16 @@ function Load-UPNList {
                 $list[$row.UserPrincipalName.Trim().ToLower()] = $true
             }
         }
+    #     Write-Host "Loaded exclusions: $($excludedUsers.Count)"
+    #     }
+    # else {
+    #     Write-Warning "Exclusion file not found: $exclusionFile"
     }
     return $list
 }
 
 $excludedUsers  = Load-UPNList $exclusionFile
 $emergencyUsers = Load-UPNList $emergencyFile
-
-$excludedUsers = @{}
-
-if (Test-Path $exclusionFile) {
-    $csv = Import-Csv $exclusionFile
-
-    foreach ($row in $csv) {
-
-        # Support multiple column names
-        $upn = $null
-
-        if ($row.UserPrincipalName) {
-            $upn = $row.UserPrincipalName
-        }
-        # elseif ($row.UPN) {
-        #     $upn = $row.UPN
-        # }
-        # elseif ($row.Email) {
-        #     $upn = $row.Email
-        # }
-
-        if ($upn) {
-            $excludedUsers[$upn.Trim().ToLower()] = $true
-        }
-    }
-
-    Write-Host "Loaded exclusions: $($excludedUsers.Count)"
-}
-else {
-    Write-Warning "Exclusion file not found: $exclusionFile"
-}
 
 # -----------------------------
 # GET PRIVILEGED ROLE MEMBERS
@@ -129,14 +88,11 @@ $privilegedReport | Export-Csv $outputPrivileged -NoTypeInformation
 # -----------------------------
 $results = @()
 
-foreach ($user in $users) {    
+foreach ($user in $users) {
+
     $upnKey = $null
     if ($user.UserPrincipalName) {
         $upnKey = $user.UserPrincipalName.Trim().ToLower()
-
-        if ($excludedUsers.ContainsKey($upnKey)) {
-            $isExcluded = $true
-        }
     }
 
     # Exclusion flags
@@ -144,22 +100,18 @@ foreach ($user in $users) {
     $isEmergency = $emergencyUsers.ContainsKey($upnKey)
     $isPrivileged = $privilegedUsers.ContainsKey($upnKey)
 
+    # Sign-in
     $lastSignIn = $user.SignInActivity.LastSignInDateTime
 
-    # Inactive logic
-    # Default to true to cater for Users never signed in = treat as inactive candidate
-    $isInactive = $true 
+    $isInactive = $true
     if ($lastSignIn) {
         $isInactive = $lastSignIn -lt $userCutoff
     }
-    
 
-    # Licensed?
     $isLicensed = ($user.AssignedLicenses.Count -gt 0)
 
-    # Confidence scoring
+    # Confidence
     $confidence = if ($lastSignIn) { "High" } else { "Medium" }
-    # never signed in (less certain) = Medium
 
     # Data quality
     if (-not $lastSignIn -and -not $user.CreatedDateTime) {
@@ -186,13 +138,8 @@ foreach ($user in $users) {
         $classification = "ACTIVE"
     }
 
-    # Safe-to-disable logic
+    # Safe to disable (STRICT)
     $safeToDisable = $false
-
-    # if ($classification -eq "DORMANT" -and
-    #     $confidence -eq "High" -and
-    #     $user.AccountEnabled -eq $true -and
-    #     -not $isExcluded) {
 
     if ($classification -eq "DORMANT" -and
         $confidence -eq "High" -and
@@ -201,31 +148,31 @@ foreach ($user in $users) {
         -not $isEmergency -and
         -not $isPrivileged -and
         $user.UserType -eq "Member") {
+
         $safeToDisable = $true
     }
 
     $results += [PSCustomObject]@{
-        DisplayName        = $user.DisplayName
-        UserPrincipalName  = $user.UserPrincipalName
-        UserType           = $user.UserType
-        AccountEnabled     = $user.AccountEnabled
-        CreatedDate        = $user.CreatedDateTime
-        LastSignIn         = $lastSignIn
-        IsLicensed         = $isLicensed
+        DisplayName       = $user.DisplayName
+        UserPrincipalName = $user.UserPrincipalName
+        UserType          = $user.UserType
+        AccountEnabled    = $user.AccountEnabled
+        LastSignIn        = $lastSignIn
+        IsLicensed        = $isLicensed
 
-        IsExcluded         = $isExcluded
-        IsEmergency        = $isEmergency
-        IsPrivileged       = $isPrivileged
+        IsExcluded        = $isExcluded
+        IsEmergency       = $isEmergency
+        IsPrivileged      = $isPrivileged
 
-        MatchConfidence    = $confidence
-        DataQuality        = $dataQuality
-        Classification     = $classification
-        SafeToDisable      = $safeToDisable
+        MatchConfidence   = $confidence
+        DataQuality       = $dataQuality
+        Classification    = $classification
+        SafeToDisable     = $safeToDisable
     }
 }
 
 # -----------------------------
-# EXPORTS SPLIT BY TYPE
+# EXPORT SPLIT BY TYPE
 # -----------------------------
 $members = $results | Where-Object { $_.UserType -eq "Member" }
 $guests  = $results | Where-Object { $_.UserType -eq "Guest" }
@@ -235,14 +182,10 @@ $membersTop50 = $results |
     Sort-Object LastSignIn | Select-Object -First 50
 
 $guestsTop50 = $results |
-    Where-Object { 
-        $_.Classification -eq "GUEST" -and 
-        # $isInactive -and
-        $_.AccountEnabled -eq $true
-    } |
+    Where-Object { $_.Classification -eq "GUEST" } |
     Sort-Object LastSignIn | Select-Object -First 50
 
-# Exports
+# Export
 $results         | Export-Csv $outputAll -NoTypeInformation
 $members         | Export-Csv $outputMembers -NoTypeInformation
 $membersTop50    | Export-Csv $outputMembersTop50 -NoTypeInformation
@@ -258,32 +201,12 @@ Write-Host "-------"
 Write-Host "Total users: $($results.Count)"
 Write-Host "Members:     $($members.Count)"
 Write-Host "Guests:      $($guests.Count)"
+
 Write-Host ""
 Write-Host "Safe to disable (Members): $($membersTop50.Count)"
-Write-Host "Safe to disable (Guests): $($guestsTop50.Count)"
-Write-Host ""
-Write-Host "Already disabled:   $($results | Where-Object {$_.Classification -eq 'ALREADY_DISABLED'} | Measure-Object | % Count)"
+
 Write-Host ""
 Write-Host "Exclusions:"
 Write-Host "  CSV exclusions: $($excludedUsers.Count)"
 Write-Host "  Emergency:      $($emergencyUsers.Count)"
 Write-Host "  Privileged:     $($privilegedUsers.Count)"
-Write-Host ""
-# -----------------------------
-# OPTIONAL DISABLE STAGE
-# -----------------------------
-<#
-Write-Host "Disabling dormant users..."
-
-foreach ($user in $dormantTop50) {
-    try {
-        Update-MgUser -UserId $user.UserPrincipalName -AccountEnabled:$false
-        Write-Host "Disabled: $($user.UserPrincipalName)"
-    }
-    catch {
-        Write-Warning "Failed: $($user.UserPrincipalName)"
-    }
-}
-
-Write-Host "✅ Disable complete"
-#>
