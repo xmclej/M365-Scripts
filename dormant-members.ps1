@@ -38,5 +38,5 @@ Get-MgUser -All -Property Id,AccountEnabled,SignInActivity,DisplayName,UserPrinc
                         }
                     }
                 } `
-| Select-Object -First 50 `
+| Select-Object -First 100 `
 | Export-Csv -Path "./dormant-members.csv" -NoTypeInformation -Encoding UTF8
