@@ -18,7 +18,7 @@ $dormantGuests = Get-MgUser -All -Property Id,AccountEnabled,SignInActivity,Disp
 }
 
 # Step 2: Take guests
-$first50 = $dormantGuests | Select-Object -First 58
+$first50 = $dormantGuests | Select-Object -First 90
 
 # Step 3: Apply exclusions 
 $finalList = $first50 | Where-Object {
