@@ -1,10 +1,45 @@
 # Microsoft Graph
 
-# Using this Connect cmd is a safety step as there is no write permissions
-Connect-MgGraph -NoWelcome -Scopes "Device.Read.All","DeviceManagementManagedDevices.Read.All"
+# -----------------------------
+# MODE SELECTION
+# -----------------------------
+Write-Host ""
+Write-Host "Select mode:"
+Write-Host "  [V] View (read-only)"
+Write-Host "  [Y] Dry Run (simulate deletion)"
+Write-Host "  [D] Delete (actual deletion)"
+Write-Host ""
 
-# Use this Connect cmd when the Delete Stage is to be used
-# Connect-MgGraph -Scopes "Device.Read.All","Device.ReadWrite.All","DeviceManagementManagedDevices.Read.All"
+do {
+    $mode = Read-Host "Enter choice (V/Y/D)"
+    $mode = $mode.Trim().ToUpper()
+} while ($mode -notin @("V","Y","D"))
+
+$deleteMode = $false
+$dryRunMode = $false
+
+if ($mode -eq "V") {
+    Write-Host ""
+    Write-Host "Running in VIEW mode (read-only)..."
+
+    Connect-MgGraph -NoWelcome -Scopes "Device.Read.All","DeviceManagementManagedDevices.Read.All"
+}
+elseif ($mode -eq "Y") {
+    Write-Host ""
+    Write-Host "Running in DRY RUN mode (no changes will be made)..."
+
+    Connect-MgGraph -NoWelcome -Scopes "Device.Read.All","DeviceManagementManagedDevices.Read.All"
+
+    $dryRunMode = $true
+}
+elseif ($mode -eq "D") {
+    Write-Host ""
+    Write-Host "⚠️ Running in DELETE mode (write enabled)..."
+
+    Connect-MgGraph -Scopes "Device.Read.All","Device.ReadWrite.All","DeviceManagementManagedDevices.Read.All"
+
+    $deleteMode = $true
+}`
 
 # -----------------------------
 # CONFIGURATION
@@ -28,11 +63,24 @@ $outputIntuneOnly    = ".\DeviceCleanup_Mismatch_IntuneOnly_$timestamp.csv"
 $outputEntraOnly     = ".\DeviceCleanup_Mismatch_EntraOnly_$timestamp.csv"
 $outputMissingId     = ".\DeviceCleanup_Intune_MissingDeviceId_$timestamp.csv"
 
+$logFile             = ".\DeviceCleanup_Log_$timestamp.txt"
+
 Write-Host ""
 Write-Host "Starting reconciliation..."
 Write-Host "Entra inactivity cutoff: $entraCutoff"
 Write-Host "Intune activity cutoff: $intuneCutoff"
 
+# -----------------------------
+# Functions
+# -----------------------------
+function Write-Log {
+    param([string]$message)
+
+    $time = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    $line = "$time - $message"
+
+    Add-Content -Path $logFile -Value $line
+}
 # -----------------------------
 # GET DATA
 # -----------------------------
@@ -200,7 +248,7 @@ foreach ($device in $entraDevices) {
         DeviceName          = $device.DisplayName
         EntraDeviceId       = $device.DeviceId
         OperatingSystem     = $device.OperatingSystem
-        ApproxLastSignIn    = $device.ApproximateLastSignInDateTime
+        ApproxLastSignIn    = if ($device.ApproximateLastSignInDateTime) {$device.ApproximateLastSignInDateTime.ToString('dd/MM/yyyy')} else {$null}
         IsInIntune          = $isInIntune
         MatchConfidence     = $confidence
         DataQuality         = $dataQuality
@@ -243,30 +291,63 @@ Write-Host "Entra only:           $($entraOnly.Count)"
 
 Write-Host ""
 Write-Host "Confidence:"
-Write-Host "  High:   $($results | Where-Object {$_.MatchConfidence -eq 'High'} | Measure-Object | % Count)"
-Write-Host "  Medium: $($results | Where-Object {$_.MatchConfidence -eq 'Medium'} | Measure-Object | % Count)"
-Write-Host "  Low:    $($results | Where-Object {$_.MatchConfidence -eq 'Low'} | Measure-Object | % Count)"
+Write-Host "  High:   $($results | Where-Object {$_.MatchConfidence -eq 'High'} | Measure-Object | ForEach-Object Count)"
+Write-Host "  Medium: $($results | Where-Object {$_.MatchConfidence -eq 'Medium'} | Measure-Object | ForEach-Object Count)"
+Write-Host "  Low:    $($results | Where-Object {$_.MatchConfidence -eq 'Low'} | Measure-Object | ForEach-Object Count)"
 
 # -----------------------------
-# OPTIONAL DELETE STAGE
+# DELETE / DRY RUN STAGE
 # -----------------------------
-# After review:
-# 1. Confirm DELETE csv is correct
-# 2. Uncomment below
+if ($dryRunMode -or $deleteMode) {
 
-<#
-Write-Host "Deleting stale devices..."
+    Write-Host ""
+    Write-Host "Devices in scope: $($toDeleteTop50.Count)"
 
-# foreach ($device in $toDelete) {
-foreach ($device in $toDeleteTop50) {
-    try {
-        Remove-MgDevice -DeviceId $device.EntraDeviceId -ErrorAction Stop
-        Write-Host "Deleted: $($device.DeviceName)"
+    Write-Log "----------------------------------------"
+    Write-Log "Execution started"
+    Write-Log "Mode: $(if ($dryRunMode) {'DRY RUN'} else {'DELETE'})"
+    Write-Log "Devices targeted: $($toDeleteTop50.Count)"
+    Write-Log "Device Name | Entra Device ID"
+
+    # Confirmation (only for real delete)
+    if ($deleteMode) {
+        Write-Host ""
+        Write-Host "⚠️ You are about to DELETE $($toDeleteTop50.Count) devices"
+        $confirm = Read-Host "Type YES to continue"
+
+        if ($confirm -ne "YES") {
+            Write-Warning "Deletion cancelled"
+            Write-Log "Deletion cancelled by user"
+            return
+        }
     }
-    catch {
-        Write-Warning "Failed: $($device.DeviceName)"
+
+    foreach ($device in $toDeleteTop50) {
+
+        if ($dryRunMode) {
+            Write-Host "[DRY RUN] Would delete: $($device.DeviceName)"
+            Write-Log "[DRY RUN] Would delete: $($device.DeviceName) | $($device.EntraDeviceId)"
+            continue
+        }
+
+        if ($deleteMode) {
+            try {
+                Remove-MgDevice -DeviceId $device.EntraDeviceId -ErrorAction Stop
+
+                Write-Host "Deleted: $($device.DeviceName)"
+                Write-Log "Deleted: $($device.DeviceName) | $($device.EntraDeviceId)"
+            }
+            catch {
+                Write-Warning "Failed: $($device.DeviceName)"
+                Write-Log "FAILED: $($device.DeviceName) | $_"
+            }
+        }
     }
+
+    Write-Log "Execution complete"
+    Write-Host "✅ Process complete"
 }
-
-Write-Host "✅ Deletion complete"
-#>
+else {
+    Write-Host ""
+    Write-Host "No changes performed (VIEW mode)"
+}
