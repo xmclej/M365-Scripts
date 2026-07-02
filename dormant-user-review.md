@@ -71,3 +71,13 @@ UserPrincipalName
 admin@contoso.com
 serviceaccount@contoso.com
 vip.user@contoso.com
+```
+## ✅ 1. Emergency Accounts
+
+**File:** `EmergencyAccounts.csv`
+
+```csv
+UserPrincipalName
+emergency1@contoso.com
+emergency2@contoso.com
+```
