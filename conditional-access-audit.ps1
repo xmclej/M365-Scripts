@@ -15,35 +15,42 @@ $outputAll = ".\CA-Policy-Report_$timestamp.csv"
 $outputTop10 = ".\CA-Policy-Top10_$timestamp.csv"
 
 # -----------------------------
-# ROLE MAP (built-in roles)
-# -----------------------------
-$roleMap = @{
-    "62e90394-69f5-4237-9190-012177145e10" = "Global Administrator"
-    "194ae4cb-b126-40b2-bd5b-6091b380977d" = "Security Administrator"
-    "f28a1f50-f6e7-4571-818b-6a12f2af6b6c" = "SharePoint Administrator"
-    "29232cdf-9323-42fd-ade2-1d097af3e4de" = "Exchange Administrator"
-    "b1be1c3e-b65d-4f19-8427-f6fa0d97feb9" = "Conditional Access Administrator"
-    "729827e3-9c14-49f7-bb1b-9608f156bbb8" = "Helpdesk Administrator"
-    "b0f54661-2d74-4c50-afa3-1ec803f12efe" = "Billing Administrator"
-    "fe930be7-5e62-47db-91af-98c3a49a38b1" = "User Administrator"
-    "c4e39bd9-1100-46d3-8c65-fb160da0071f" = "Authentication Administrator"
-    "9b895d92-2cd3-44c7-9d02-a6ac2d5ea5c3" = "Application Administrator"
-    "158c047a-c907-4556-b7ef-446551a6b5f7" = "Cloud Application Administrator"
-    "966707d0-3269-4727-9be2-8c3a10f19b9d" = "Privileged Authentication Administrator"
-    "7be44c8a-adaf-4e2a-84d6-ab2649e08a13" = "Privileged Role Administrator"
-    "e8611ab8-c189-46e8-94e1-60213ab1f814" = "Compliance Administrator"
-}
-
-# -----------------------------
 # CACHE GROUPS
 # -----------------------------
 Write-Host "Caching groups..."
 $cacheTimer = [System.Diagnostics.Stopwatch]::StartNew()
-
-$allGroups = Get-MgGroup -All
-
+# $allGroups = Get-MgGroup -All
+$groupCache = @{}
+Get-MgGroup -All | ForEach-Object {
+    $groupCache[$_.Id] = $_.DisplayName}
 $cacheTimer.Stop()
 Write-Host "Group cache load time: $($cacheTimer.Elapsed.TotalSeconds) sec"
+
+# -----------------------------
+# CACHE Users
+# -----------------------------
+Write-Host "Caching users..."
+$cacheTimer = [System.Diagnostics.Stopwatch]::StartNew()
+$userCache = @{}
+Get-MgUser -All |
+ForEach-Object {
+    $userCache[$_.Id] = $_.UserPrincipalName
+}
+# Write-Host "Cached $($userCache.Count) users"
+$cacheTimer.Stop()
+Write-Host "User cache load time: $($cacheTimer.Elapsed.TotalSeconds) sec"
+
+# -----------------------------
+# CACHE ROLES (built-in roles)
+# -----------------------------
+Write-Host "Caching directory roles..."
+$cacheTimer = [System.Diagnostics.Stopwatch]::StartNew()
+$roleMap = @{}
+Get-MgRoleManagementDirectoryRoleDefinition -All |
+    ForEach-Object {$roleMap[$_.Id.ToLower()] = $_.DisplayName}
+# Write-Host "Cached $($roleMap.Count) role definitions"
+$cacheTimer.Stop()
+Write-Host "User cache load time: $($cacheTimer.Elapsed.TotalSeconds) sec"
 
 # -----------------------------
 # FUNCTIONS
@@ -55,42 +62,30 @@ function Resolve-User {
         return $id
     }
 
-    try {
-        return (Get-MgUser -UserId $id -ErrorAction Stop).UserPrincipalName
+    if ($userCache.ContainsKey($id)) {
+        return $userCache[$id]
     }
-    catch {
-        return "UNRESOLVED_USER:$id"
-    }
+
+    return "UNRESOLVED_USER:$id"
 }
 
 function Resolve-Group {
     param ($id)
-
     if (-not $id -or $id -in @("All","None")) {
-        return $id
-    }
-
-    $match = $allGroups | Where-Object { $_.Id -eq $id }
-
-    if ($match) {
-        return $match.DisplayName
-    }
-    else {
-        return "UNRESOLVED_GROUP:$id"
-    }
+        return $id}
+    if ($groupCache.ContainsKey($id)) {
+        return $groupCache[$id]}
+    else {return "UNRESOLVED_GROUP:$id"}
 }
+
 
 function Resolve-Role {
     param ($id)
-
-    if (-not $id) { return $null }
-
-    $normalized = ([string]$id).Trim().ToLower()
-
+    if (-not ($id)) {
+        return $null}
+    $normalized = $id.Trim().ToLower()
     if ($roleMap.ContainsKey($normalized)) {
-        return $roleMap[$normalized]
-    }
-
+        return $roleMap[$normalized]}
     return "UNKNOWN_ROLE:$normalized"
 }
 
@@ -99,11 +94,9 @@ function Resolve-Role {
 # -----------------------------
 $policies = Get-MgIdentityConditionalAccessPolicy
 $results = @()
-
 $resolveTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
 foreach ($policy in $policies) {
-
     $conditions = $policy.Conditions
 
     # -----------------------------
@@ -112,38 +105,32 @@ foreach ($policy in $policies) {
     $includeUsers = (
         $conditions.Users.IncludeUsers |
         ForEach-Object { Resolve-User $_ } |
-        Where-Object { $_ }
-    ) -join ","
+        Where-Object { $_ } ) -join ","
 
     $excludeUsers = (
         $conditions.Users.ExcludeUsers |
         ForEach-Object { Resolve-User $_ } |
-        Where-Object { $_ }
-    ) -join ","
+        Where-Object { $_ } ) -join ","
 
     $includeGroups = (
         $conditions.Users.IncludeGroups |
         ForEach-Object { Resolve-Group $_ } |
-        Where-Object { $_ }
-    ) -join ","
+        Where-Object { $_ } ) -join ","
 
     $excludeGroups = (
         $conditions.Users.ExcludeGroups |
         ForEach-Object { Resolve-Group $_ } |
-        Where-Object { $_ }
-    ) -join ","
+        Where-Object { $_ } ) -join ","
 
     $includeRoles = (
         $conditions.Users.IncludeRoles |
         ForEach-Object { Resolve-Role $_ } |
-        Where-Object { $_ }
-    ) -join ","
+        Where-Object { $_ } ) -join ","
 
     $excludeRoles = (
         $conditions.Users.ExcludeRoles |
         ForEach-Object { Resolve-Role $_ } |
-        Where-Object { $_ }
-    ) -join ","
+        Where-Object { $_ } ) -join ","
 
     # -----------------------------
     # CONTROLS
@@ -155,12 +142,10 @@ foreach ($policy in $policies) {
     # RISK DETECTION
     # -----------------------------
     $targetsAllUsers = $conditions.Users.IncludeUsers -contains "All"
-
     $hasExclusions = (
         ($conditions.Users.ExcludeUsers.Count -gt 0) -or
         ($conditions.Users.ExcludeGroups.Count -gt 0) -or
-        ($conditions.Users.ExcludeRoles.Count -gt 0)
-    )
+        ($conditions.Users.ExcludeRoles.Count -gt 0))
 
     $targetsGlobalAdmin = $includeRoles -match "Global Administrator"
 
@@ -169,39 +154,74 @@ foreach ($policy in $policies) {
     $highRisk = $false
 
     if ($policy.State -eq "enabled") {
-
         if ($targetsAllUsers -and -not $hasExclusions) {
             $highRisk = $true
-            $riskReasons += "All users no exclusions"
-        }
-
+            $riskReasons += "All users no exclusions"}
         if (-not $requiresMFA) {
             $highRisk = $true
-            $riskReasons += "No MFA enforced"
-        }
-
+            $riskReasons += "No MFA enforced"}
         if ($targetsGlobalAdmin -and -not $requiresMFA) {
             $highRisk = $true
             $globalAdminNoMFA = $true
-            $riskReasons += "Global Admins without MFA"
-        }
-    }
-
+            $riskReasons += "Global Admins without MFA"}}
     # Break-glass detection
     $hasBreakGlass = $excludeUsers -match "breakglass|emergency"
-
     # Report-only
     $isReportOnly = $policy.State -eq "enabledForReportingButNotEnforced"
-
     # Risk score
     $riskScore = $riskReasons.Count
+
+    # -----------------------------
+    # SUMMARY TARGETS (EXEC VIEW)
+    # -----------------------------
+    $includedSummary = @()
+    if ($includeGroups) {
+        $includeGroups.Split(',') | ForEach-Object {
+            $includedSummary += "GROUP:$($_.Trim())"}}
+    if ($includeRoles) {
+        $includedSummary += "ROLES"}
+    if ($includeUsers) {
+        if ($includeUsers -eq "All") {
+            $includedSummary += "ALLUSERS"}
+        else {$includedSummary += "USERS"}}
+
+    $excludedSummary = @()
+    if ($excludeGroups) {
+        $excludeGroups.Split(',') | ForEach-Object {
+            $excludedSummary += "GROUP:$($_.Trim())"}}
+    if ($excludeRoles) {
+        $excludedSummary += "ROLES"}
+    if ($excludeUsers) {
+        $excludedSummary += "USERS"}
+
+    # -----------------------------
+    # CONDITIONS SUMMARY
+    # -----------------------------
+    $conditionsSummary = @()
+    if ($conditions.UserRiskLevels.Count -gt 0) {
+        $conditionsSummary += "User Risk: $($conditions.UserRiskLevels -join ', ')"}
+    if ($conditions.SignInRiskLevels.Count -gt 0) {
+        $conditionsSummary += "Sign-In Risk: $($conditions.SignInRiskLevels -join ', ')"}
+    if ($conditions.Platforms.IncludePlatforms.Count -gt 0) {
+        $conditionsSummary += "Platforms: $($conditions.Platforms.IncludePlatforms -join ', ')"}
+    if ($conditions.ClientAppTypes.Count -gt 0) {
+        $conditionsSummary += "Apps: $($conditions.ClientAppTypes -join ', ')"}
+    $conditionsSummary = $conditionsSummary -join "; "
 
     # -----------------------------
     # OUTPUT OBJECT
     # -----------------------------
     $results += [PSCustomObject]@{
         PolicyName     = $policy.DisplayName
-        State          = $policy.State
+        State = switch ($policy.State) {
+            "enabled" { "Enabled" }
+            "disabled" { "Disabled" }
+            "enabledForReportingButNotEnforced" { "Report-Only" }
+            default { $policy.State }
+        }
+
+        IncludedSummary = ($includedSummary -join "|")
+        ExcludedSummary = ($excludedSummary -join "|")
 
         IncludeUsers   = $includeUsers
         ExcludeUsers   = $excludeUsers
@@ -214,6 +234,9 @@ foreach ($policy in $policies) {
 
         GrantControls  = $grantControls
         RequiresMFA    = $requiresMFA
+        TargetResources = $targetResources
+        Conditions      = $conditionsSummary
+        SessionControls = $sessionSummary
 
         TargetsGlobalAdmin = $targetsGlobalAdmin
         GlobalAdminNoMFA   = $globalAdminNoMFA
@@ -299,15 +322,25 @@ $enhancedResults = $results | ForEach-Object {
         RiskScore  = $_.RiskScore
         Severity   = $severity
         HighRisk   = $_.HighRisk
+
+        IncludedSummary = $_.IncludedSummary
+        ExcludedSummary = $_.ExcludedSummary
+
         RequiresMFA = $_.RequiresMFA
-        IncludeUsers = $_.IncludeUsers
-        ExcludeUsers = $_.ExcludeUsers
+        IncludeGroups = $_.IncludeGroups
+        ExcludeGroups = $_.ExcludeGroups
         IncludeRoles = $_.IncludeRoles
         ExcludeRoles = $_.ExcludeRoles
+        IncludeUsers = $_.IncludeUsers
+        ExcludeUsers = $_.ExcludeUsers
         RiskReasons = $_.RiskReasons
         Recommendation = $recommendation
     }
 }
+
+# $enhancedResults |
+#     Select-Object -First 1 |
+#     Format-List *
 
 $jsonData = $enhancedResults | ConvertTo-Json -Depth 5
 
@@ -324,11 +357,22 @@ $html = @"
 body { background:#f4f6f8; }
 
 /* Table handling */
-.table td, .table th {
-    max-width: 220px;
+#policyTable td,
+#policyTable th {
+    max-width: 250px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+#fullPolicyTable td,
+#fullPolicyTable th {
+    max-width: 350px;
+    vertical-align: top;
+}
+
+#fullPolicyTable th {
+    cursor: pointer;
 }
 
 /* Roles column slightly wider */
@@ -438,8 +482,8 @@ tr.critical { background:#ffcccc; }
             <th>Risk Score</th>
             <th>Severity</th>
             <th>MFA</th>
-            <th>Roles</th>
-            <th>Users</th>
+            <th>Included</th>
+            <th>Excluded</th>
             <th>Risk</th>
             </tr>
         </thead>
@@ -454,16 +498,20 @@ tr.critical { background:#ffcccc; }
     <table id="fullPolicyTable" class="table table-striped table-bordered table-sm">
         <thead class="table-dark sticky-top">
             <tr>
-                <th>Policy</th>
-                <th>State</th>
+                <th onclick="sortDetailBy('policy')">Policy ↕</th>
+                <th onclick="sortDetailBy('state')">State ↕</th>
                 <th>MFA</th>
-                <th>Include Users</th>
-                <th>Exclude Users</th>
+                <th>Include Groups</th>
+                <th>Exclude Groups</th>
                 <th>Include Roles</th>
                 <th>Exclude Roles</th>
-                <th>Risk Score</th>
-                <th>Severity</th>
-                <th>Risk Reasons</th>
+                <th>Include Users</th>
+                <th>Exclude Users</th>
+                <th>Target Resources</th>
+                <th>Conditions</th>
+                <th>Session Controls</th>
+                <th onclick="sortDetailBy('risk')">Risk Score ↕</th>
+                <th onclick="sortDetailBy('severity')">Severity ↕</th>
                 <th>Recommendation</th>
             </tr>
         </thead>
@@ -504,6 +552,36 @@ function applySort() {
 
 }
 
+// BADGES
+function renderTargetSummary(text) {
+    if (!text) return "";
+    return text.split("|")
+        .map(item => {
+            if (item === "ALLUSERS")
+                return "<span class='badge bg-success me-1'>🌍 All Users</span>";
+            if (item === "USERS")
+                return "<span class='badge bg-primary me-1'>👤 Users</span>";
+            if (item === "ROLES")
+                return "<span class='badge bg-warning text-dark me-1'>🔑 Roles</span>";
+            if (item.startsWith("GROUP:")) {
+                let groupName = item.substring(6);
+                let colour = "bg-secondary";
+                if (/test/i.test(groupName))
+                    colour = "bg-info text-dark";
+                else if (/uat/i.test(groupName))
+                    colour = "bg-warning text-dark";
+                else if (/global/i.test(groupName))
+                    colour = "bg-success";
+                else if (/emergency/i.test(groupName))
+                    colour = "bg-danger";
+                return "<span class='badge " + colour + " me-1'>👥 "
+                    + groupName + "</span>";
+            }
+            return item;
+        })
+        .join("<br>");
+}
+
 // TABLE RENDER
 function renderTable() {
     let tbody = document.querySelector("#policyTable tbody");
@@ -517,13 +595,12 @@ function renderTable() {
 
         let html = "";
         html += "<td title=\"" + (p.PolicyName||"").replace(/"/g,'&quot;') + "\">" + (p.PolicyName||"") + "</td>";
-//        html += "<td title='" + (p.PolicyName||"") + "'>" + (p.PolicyName||"") + "</td>";
         html += "<td>" + (p.State||"") + "</td>";
         html += "<td>" + (p.RiskScore ?? "") + "</td>";
         html += "<td><span class='badge " + severity + "B'>" + (p.Severity||"") + "</span></td>";
         html += "<td>" + (p.RequiresMFA ? "✅":"❌") + "</td>";
-        html += "<td title='" + (p.IncludeRoles||"").replace(/"/g,'&quot;') + "'>" + (p.IncludeRoles||"") + "</td>";
-        html += "<td>" + (p.IncludeUsers||"") + "</td>";
+        html += "<td>" + renderTargetSummary(p.IncludedSummary) + "</td>";
+        html += "<td>" + renderTargetSummary(p.ExcludedSummary) + "</td>";
         html += "<td>" + (p.RiskReasons||"") + "</td>";
 
         row.innerHTML = html;
@@ -534,31 +611,67 @@ function renderTable() {
     });
 }
 
+// SORT DETAIL TABLE
+function sortDetailBy(mode) {
+    if (mode === "policy") {
+        data.sort((a,b) =>
+            (a.PolicyName || "")
+                .localeCompare(b.PolicyName || "")
+        );
+    }
+    else if (mode === "state") {
+        data.sort((a,b) =>
+            (a.State || "")
+                .localeCompare(b.State || "")
+        );
+    }
+    else if (mode === "risk") {
+        data.sort((a,b) =>
+            (b.RiskScore || 0)
+          - (a.RiskScore || 0)
+        );
+    }
+    else if (mode === "severity") {
+        const rank = {
+            Critical:4,
+            High:3,
+            Medium:2,
+            Low:1
+        };
+        data.sort((a,b) =>
+            (rank[b.Severity] || 0)
+          - (rank[a.Severity] || 0)
+        );
+    }
+    renderFullTable();
+}
+
+// WRAP TEXT ON COMMAS
+function wrapCommas(text) {
+    if (!text) return "";
+    return text.replace(/,\s*/g, "<br>");
+}
+
 // FULL TABLE RENDER
 function renderFullTable() {
 
     let tbody = document.querySelector("#fullPolicyTable tbody");
     tbody.innerHTML = "";
-
     data.forEach(p => {
-
         let row = document.createElement("tr");
-
         let severity = (p.Severity || "Low").toLowerCase();
         row.className = severity;
 
         let html = "";
-
         html += "<td>" + (p.PolicyName||"") + "</td>";
         html += "<td>" + (p.State||"") + "</td>";
         html += "<td>" + (p.RequiresMFA ? "✅" : "❌") + "</td>";
-
-        html += "<td title=\"" + (p.IncludeUsers||"").replace(/"/g,'&quot;') + "\">" + (p.IncludeUsers||"") + "</td>";
-        html += "<td title=\"" + (p.ExcludeUsers||"").replace(/"/g,'&quot;') + "\">" + (p.ExcludeUsers||"") + "</td>";
-
-        html += "<td title=\"" + (p.IncludeRoles||"").replace(/"/g,'&quot;') + "\">" + (p.IncludeRoles||"") + "</td>";
-        html += "<td title=\"" + (p.ExcludeRoles||"").replace(/"/g,'&quot;') + "\">" + (p.ExcludeRoles||"") + "</td>";
-
+        html += "<td title=\"" + (p.IncludeGroups||"").replace(/"/g,'&quot;') + "\">" + wrapCommas(p.IncludeGroups||"") + "</td>";
+        html += "<td title=\"" + (p.ExcludeGroups||"").replace(/"/g,'&quot;') + "\">" + wrapCommas(p.ExcludeGroups||"") + "</td>";
+        html += "<td title=\"" + (p.IncludeRoles||"").replace(/"/g,'&quot;') + "\">" + wrapCommas(p.IncludeRoles||"") + "</td>";
+        html += "<td title=\"" + (p.ExcludeRoles||"").replace(/"/g,'&quot;') + "\">" + wrapCommas(p.ExcludeRoles||"") + "</td>";
+        html += "<td title=\"" + (p.IncludeUsers||"").replace(/"/g,'&quot;') + "\">" + wrapCommas(p.IncludeUsers||"") + "</td>";
+        html += "<td title=\"" + (p.ExcludeUsers||"").replace(/"/g,'&quot;') + "\">" + wrapCommas(p.ExcludeUsers||"") + "</td>";
         html += "<td>" + (p.RiskScore ?? "") + "</td>";
         html += "<td>" + (p.Severity || "") + "</td>";
         html += "<td>" + (p.RiskReasons || "") + "</td>";
