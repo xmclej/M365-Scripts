@@ -78,7 +78,6 @@ function Resolve-Group {
     else {return "UNRESOLVED_GROUP:$id"}
 }
 
-
 function Resolve-Role {
     param ($id)
     if (-not ($id)) {
@@ -156,7 +155,13 @@ foreach ($policy in $policies) {
         $hasSessionControls -or
         $hasDeviceControls
 
-
+    $controlType = switch ($true) {
+        $requiresMFA       { "MFA"; break }
+        $isBlockPolicy     { "Block"; break }
+        $hasSessionControls { "Session"; break }
+        $hasDeviceControls { "Device"; break }
+        default            { "None" }
+    }
     # -----------------------------
     # RISK DETECTION
     # -----------------------------
@@ -252,6 +257,7 @@ foreach ($policy in $policies) {
         HasSessionControls = $hasSessionControls
         HasDeviceControls  = $hasDeviceControls
         HasSecurityControl = $hasSecurityControl
+        ControlType     = $controlType
         TargetResources = $targetResources
         Conditions      = $conditionsSummary
         SessionControls = $sessionSummary
@@ -307,6 +313,7 @@ $htmlOutput = ".\CA-Policy-Dashboard_$timestamp.html"
 $totalPolicies = $results.Count
 $highRiskCount = ($results | Where-Object { $_.HighRisk }).Count
 $adminRiskCount = ($results | Where-Object { $_.GlobalAdminNoMFA }).Count
+$reportOnlyCount = ($results | Where-Object { $_.ReportOnly } ).Count
 $mfaCount = ($results | Where-Object { $_.RequiresMFA }).Count
 $blockCount = ($results | Where-Object { $_.GrantControls -match "block" } ).Count
 $noMfaCount = $totalPolicies - $mfaCount - $blockCount
@@ -348,12 +355,14 @@ $enhancedResults = $results | ForEach-Object {
         RiskScore  = $_.RiskScore
         Severity   = $severity
         HighRisk   = $_.HighRisk
-
         IncludedSummary = $_.IncludedSummary
         ExcludedSummary = $_.ExcludedSummary
-
         RequiresMFA = $_.RequiresMFA
         IsBlockPolicy = $_.IsBlockPolicy
+        HasSessionControls = $_.HasSessionControls
+        HasDeviceControls  = $_.HasDeviceControls
+        HasSecurityControl = $_.HasSecurityControl
+        ControlType        = $_.ControlType
         IncludeGroups = $_.IncludeGroups
         ExcludeGroups = $_.ExcludeGroups
         IncludeRoles = $_.IncludeRoles
@@ -475,6 +484,13 @@ tr.critical { background:#ffcccc; }
         <div class="card text-white bg-dark text-center p-3">
             <h5>Admin No MFA</h5>
             <h2>$adminRiskCount</h2>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card text-white bg-dark text-center p-3">
+            <h5>Report Only</h5>
+            <h2>$reportOnlyCount</h2>
         </div>
     </div>
 </div>
@@ -757,7 +773,7 @@ new Chart(document.getElementById('mfaChart'), {
         labels:["MFA Enabled","Block","Session Controls","No Controls"],
         datasets:[{
             data: [$mfaCount,$blockCount,$noMfaCount],
-            backgroundColor:["#107C10","#0078D4","#D83B01"]
+            backgroundColor:["#107C10","#0078D4","#FFB900","#D83B01"]
         }]
     },
     options: {
