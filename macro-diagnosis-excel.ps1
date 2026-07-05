@@ -266,7 +266,7 @@ Write-Host "----------------------------------------------------"
 
 $filePath = Read-Host "Enter path to XLSM file (or press Enter to skip)"
 
-if ((null -ne $filePath) -and ($filePath -ne ""))
+if (($null -ne $filePath) -and ($filePath -ne ""))
 {
     if (Test-Path $filePath)
     {
