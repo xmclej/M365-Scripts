@@ -1,7 +1,21 @@
-Write-Host "===================================================="
-Write-Host "Excel Macro / ActiveX Diagnostic Script"
-Write-Host "===================================================="
-Write-Host ""
+$LogFile = "$env:TEMP\Macro-Diagnostics.txt"
+
+if (Test-Path $LogFile) {
+    Remove-Item $LogFile -Force
+}
+
+function Write-Log {
+    param(
+        [string]$Message
+    )
+
+    $Message | Out-File -FilePath $LogFile -Append -Encoding UTF8
+}
+
+Write-Log "===================================================="
+Write-Log "Excel Macro / ActiveX Diagnostic Script"
+Write-Log "===================================================="
+Write-Log ""
 
 function Get-RegKey {
     param(
@@ -9,23 +23,23 @@ function Get-RegKey {
         [string]$Title
     )
 
-    Write-Host ""
-    Write-Host "----------------------------------------------------"
-    Write-Host $Title
-    Write-Host "----------------------------------------------------"
+    Write-Log ""
+    Write-Log "----------------------------------------------------"
+    Write-Log $Title
+    Write-Log "----------------------------------------------------"
 
     if (Test-Path $Path) {
         Get-ItemProperty -Path $Path |
             Format-List *
     }
     else {
-        Write-Host "NOT FOUND"
+        Write-Log "NOT FOUND"
     }
 }
 
-Write-Host "User: $env:USERNAME"
-Write-Host "Computer: $env:COMPUTERNAME"
-Write-Host ""
+Write-Log "User: $env:USERNAME"
+Write-Log "Computer: $env:COMPUTERNAME"
+Write-Log ""
 
 # -----------------------------------------------------
 # Office Policy Settings
@@ -61,30 +75,30 @@ Get-RegKey `
     -Path "HKCU:\Software\Microsoft\Office\16.0\Common\Security" `
     -Title "Office 16 User Security Settings"
 
-    Write-Host ""
-    Write-Host "----------------------------------------------------"
-    Write-Host "Important Excel Security Values"
-    Write-Host "----------------------------------------------------"
+    Write-Log ""
+    Write-Log "----------------------------------------------------"
+    Write-Log "Important Excel Security Values"
+    Write-Log "----------------------------------------------------"
 
     $excelSec = "HKCU:\Software\Microsoft\Office\16.0\Excel\Security"
 
     if (Test-Path $excelSec) {
         $props = Get-ItemProperty $excelSec
 
-        Write-Host "VBAWarnings:" $props.VBAWarnings
+        Write-Log "VBAWarnings:" $props.VBAWarnings
 
         if ($null -ne $props.BlockContentExecutionFromInternet) {
-            Write-Host "BlockContentExecutionFromInternet:" $props.BlockContentExecutionFromInternet
+            Write-Log "BlockContentExecutionFromInternet:" $props.BlockContentExecutionFromInternet
         }
     }
 # -----------------------------------------------------
 # Trusted Locations
 # -----------------------------------------------------
 
-Write-Host ""
-Write-Host "----------------------------------------------------"
-Write-Host "Excel Trusted Locations"
-Write-Host "----------------------------------------------------"
+Write-Log ""
+Write-Log "----------------------------------------------------"
+Write-Log "Excel Trusted Locations"
+Write-Log "----------------------------------------------------"
 
 $trustedLocationRoot =
     "HKCU:\Software\Microsoft\Office\16.0\Excel\Security\Trusted Locations"
@@ -92,8 +106,8 @@ $trustedLocationRoot =
 if (Test-Path $trustedLocationRoot)
 {
     Get-ChildItem $trustedLocationRoot | ForEach-Object {
-        Write-Host ""
-        Write-Host $_.PSChildName
+        Write-Log ""
+        Write-Log $_.PSChildName
         Get-ItemProperty $_.PSPath |
             Select-Object Path,Description,AllowSubFolders |
             Format-List
@@ -101,7 +115,7 @@ if (Test-Path $trustedLocationRoot)
 }
 else
 {
-    Write-Host "No Trusted Locations found."
+    Write-Log "No Trusted Locations found."
 }
 
 # -----------------------------------------------------
@@ -116,10 +130,10 @@ Get-RegKey `
 # SharePoint Zone Mapping
 # -----------------------------------------------------
 
-Write-Host ""
-Write-Host "----------------------------------------------------"
-Write-Host "ZoneMap Domains"
-Write-Host "----------------------------------------------------"
+Write-Log ""
+Write-Log "----------------------------------------------------"
+Write-Log "ZoneMap Domains"
+Write-Log "----------------------------------------------------"
 
 $zoneMap =
 "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap\Domains"
@@ -138,8 +152,8 @@ if (Test-Path $zoneMap)
                 $_.PSChildName -match "microsoft"
             )
             {
-                Write-Host ""
-                Write-Host $_.Name
+                Write-Log ""
+                Write-Log $_.Name
                 $item | Format-List
             }
         }
@@ -150,10 +164,10 @@ if (Test-Path $zoneMap)
 # # SharePoint / Internet Zone Assignments
 # # -----------------------------------------------------
 
-# Write-Host ""
-# Write-Host "----------------------------------------------------"
-# Write-Host "Internet Explorer Zone Assignments"
-# Write-Host "----------------------------------------------------"
+# Write-Log ""
+# Write-Log "----------------------------------------------------"
+# Write-Log "Internet Explorer Zone Assignments"
+# Write-Log "----------------------------------------------------"
 
 # $zoneMap = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap"
 
@@ -173,10 +187,10 @@ if (Test-Path $zoneMap)
 # Key Registry Values
 # -----------------------------------------------------
 
-Write-Host ""
-Write-Host "----------------------------------------------------"
-Write-Host "Important Values Summary"
-Write-Host "----------------------------------------------------"
+Write-Log ""
+Write-Log "----------------------------------------------------"
+Write-Log "Important Values Summary"
+Write-Log "----------------------------------------------------"
 
 $checks = @(
     @{
@@ -222,11 +236,11 @@ foreach ($check in $checks)
             (Get-ItemProperty -Path $check.Path `
             -ErrorAction Stop).($check.Value)
 
-        Write-Host "$($check.Name): $value"
+        Write-Log "$($check.Name): $value"
     }
     catch
     {
-        Write-Host "$($check.Name): Not Found"
+        Write-Log "$($check.Name): Not Found"
     }
 }
 
@@ -234,10 +248,10 @@ foreach ($check in $checks)
 # Office Version
 # -----------------------------------------------------
 
-Write-Host ""
-Write-Host "----------------------------------------------------"
-Write-Host "Office Version"
-Write-Host "----------------------------------------------------"
+Write-Log ""
+Write-Log "----------------------------------------------------"
+Write-Log "Office Version"
+Write-Log "----------------------------------------------------"
 
 $officePath =
     "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration"
@@ -252,21 +266,21 @@ if (Test-Path $officePath)
 }
 else
 {
-    Write-Host "Office Click-To-Run information not found."
+    Write-Log "Office Click-To-Run information not found."
 }
 
 # -----------------------------------------------------
 # Mark of the Web (MOTW) Check
 # -----------------------------------------------------
 
-Write-Host ""
-Write-Host "----------------------------------------------------"
-Write-Host "Mark of the Web (MOTW) Check"
-Write-Host "----------------------------------------------------"
+Write-Log ""
+Write-Log "----------------------------------------------------"
+Write-Log "Mark of the Web (MOTW) Check"
+Write-Log "----------------------------------------------------"
 
 $filePath = Read-Host "Enter path to XLSM file (or press Enter to skip)"
 
-if (($null -ne $filePath) -and ($filePath -ne ""))
+if ($filePath)
 {
     if (Test-Path $filePath)
     {
@@ -280,57 +294,63 @@ if (($null -ne $filePath) -and ($filePath -ne ""))
 
             if ($zoneStream)
             {
-                Write-Host ""
-                Write-Host "MOTW DETECTED"
-                Write-Host "The file contains a Zone.Identifier alternate data stream."
-                Write-Host ""
+                Write-Log ""
+                Write-Log "MOTW DETECTED"
+                Write-Log "The file contains a Zone.Identifier alternate data stream."
+                Write-Log ""
 
-                Write-Host "Zone.Identifier Contents:"
-                Write-Host "------------------------"
+                Write-Log "Zone.Identifier Contents:"
+                Write-Log "------------------------"
 
                 Get-Content "$filePath`:Zone.Identifier"
             }
             else
             {
-                Write-Host ""
-                Write-Host "No Mark-of-the-Web detected."
+                Write-Log ""
+                Write-Log "No Mark-of-the-Web detected."
             }
         }
         catch
         {
-            Write-Host "Unable to check alternate data streams."
-            Write-Host $_.Exception.Message
+            Write-Log "Unable to check alternate data streams."
+            Write-Log $_.Exception.Message
         }
     }
     else
     {
-        Write-Host "File not found."
+        Write-Log "File not found."
     }
 }
 else
 {
-    Write-Host "MOTW check skipped."
+    Write-Log "MOTW check skipped."
 }
 # -----------------------------------------------------
 # Interpretation Guide
 # -----------------------------------------------------
 
-Write-Host ""
-Write-Host "===================================================="
-Write-Host "INTERPRETATION GUIDE"
-Write-Host "===================================================="
-Write-Host ""
-Write-Host "VBAWarnings"
-Write-Host " 1 = Enable VBA macros"
-Write-Host " 2 = Disable VBA macros with notification"
-Write-Host " 3 = Disable all except digitally signed"
-Write-Host " 4 = Disable all without notification"
-Write-Host ""
-Write-Host "DisableAllActiveX"
-Write-Host " 0 = Not blocked"
-Write-Host " 1 = Disable all controls without notification"
-Write-Host ""
-Write-Host "blockcontentexecutionfrominternet"
-Write-Host " 1 = Block macros from Internet/SharePoint"
-Write-Host " 0 = Not blocked"
-Write-Host ""
+Write-Log ""
+Write-Log "===================================================="
+Write-Log "INTERPRETATION GUIDE"
+Write-Log "===================================================="
+Write-Log ""
+Write-Log "VBAWarnings"
+Write-Log " 1 = Enable VBA macros"
+Write-Log " 2 = Disable VBA macros with notification"
+Write-Log " 3 = Disable all except digitally signed"
+Write-Log " 4 = Disable all without notification"
+Write-Log ""
+Write-Log "DisableAllActiveX"
+Write-Log " 0 = Not blocked"
+Write-Log " 1 = Disable all controls without notification"
+Write-Log ""
+Write-Log "blockcontentexecutionfrominternet"
+Write-Log " 1 = Block macros from Internet/SharePoint"
+Write-Log " 0 = Not blocked"
+Write-Log ""
+
+Write-Log ""
+Write-Log "Diagnostic completed."
+
+Write-Host "Results saved to:"
+Write-Host $LogFile
