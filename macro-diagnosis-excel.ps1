@@ -43,6 +43,8 @@ Get-RegKey `
     -Path "HKCU:\Software\Policies\Microsoft\Office\16.0\Common\Security" `
     -Title "Office 16 Common Security Policies"
 
+    reg query "HKCU\Software\Microsoft\Office\16.0\Excel\Security" /v BlockContentExecutionFromInternet
+`
 # -----------------------------------------------------
 # User Excel Security Settings
 # -----------------------------------------------------
@@ -59,6 +61,22 @@ Get-RegKey `
     -Path "HKCU:\Software\Microsoft\Office\16.0\Common\Security" `
     -Title "Office 16 User Security Settings"
 
+    Write-Host ""
+    Write-Host "----------------------------------------------------"
+    Write-Host "Important Excel Security Values"
+    Write-Host "----------------------------------------------------"
+
+    $excelSec = "HKCU:\Software\Microsoft\Office\16.0\Excel\Security"
+
+    if (Test-Path $excelSec) {
+        $props = Get-ItemProperty $excelSec
+
+        Write-Host "VBAWarnings:" $props.VBAWarnings
+
+        if ($null -ne $props.BlockContentExecutionFromInternet) {
+            Write-Host "BlockContentExecutionFromInternet:" $props.BlockContentExecutionFromInternet
+        }
+    }
 # -----------------------------------------------------
 # Trusted Locations
 # -----------------------------------------------------
@@ -95,27 +113,61 @@ Get-RegKey `
     -Title "Office Cloud Policy"
 
 # -----------------------------------------------------
-# SharePoint / Internet Zone Assignments
+# SharePoint Zone Mapping
 # -----------------------------------------------------
 
 Write-Host ""
 Write-Host "----------------------------------------------------"
-Write-Host "Internet Explorer Zone Assignments"
+Write-Host "ZoneMap Domains"
 Write-Host "----------------------------------------------------"
 
-$zoneMap = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap"
+$zoneMap =
+"HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap\Domains"
 
 if (Test-Path $zoneMap)
 {
     Get-ChildItem $zoneMap -Recurse |
-        ForEach-Object {
-            try {
-                Get-ItemProperty $_.PSPath |
-                    Format-List
+    ForEach-Object {
+
+        try {
+            $item = Get-ItemProperty $_.PSPath
+
+            if (
+                $_.PSChildName -match "sharepoint" -or
+                $_.PSChildName -match "office" -or
+                $_.PSChildName -match "microsoft"
+            )
+            {
+                Write-Host ""
+                Write-Host $_.Name
+                $item | Format-List
             }
-            catch {}
         }
-}
+        catch {}
+    }
+}    
+# # -----------------------------------------------------
+# # SharePoint / Internet Zone Assignments
+# # -----------------------------------------------------
+
+# Write-Host ""
+# Write-Host "----------------------------------------------------"
+# Write-Host "Internet Explorer Zone Assignments"
+# Write-Host "----------------------------------------------------"
+
+# $zoneMap = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap"
+
+# if (Test-Path $zoneMap)
+# {
+#     Get-ChildItem $zoneMap -Recurse |
+#         ForEach-Object {
+#             try {
+#                 Get-ItemProperty $_.PSPath |
+#                     Format-List
+#             }
+#             catch {}
+#         }
+# }
 
 # -----------------------------------------------------
 # Key Registry Values
@@ -128,16 +180,39 @@ Write-Host "----------------------------------------------------"
 
 $checks = @(
     @{
+        Name = "Policy VBAWarnings"
+        Path = "HKCU:\Software\Policies\Microsoft\Office\16.0\Excel\Security"
+        Value = "VBAWarnings"
+    },
+    @{
+        Name = "Policy BlockContentExecutionFromInternet"
+        Path = "HKCU:\Software\Policies\Microsoft\Office\16.0\Excel\Security"
+        Value = "BlockContentExecutionFromInternet"
+    },
+    @{
+        Name = "Local VBAWarnings"
+        Path = "HKCU:\Software\Microsoft\Office\16.0\Excel\Security"
+        Value = "VBAWarnings"
+    },
+    @{
         Name = "DisableAllActiveX"
         Path = "HKCU:\Software\Microsoft\Office\Common\Security"
         Value = "DisableAllActiveX"
-    },
-    @{
-        Name = "Excel VBAWarnings"
-        Path = "HKCU:\Software\Microsoft\Office\16.0\Excel\Security"
-        Value = "VBAWarnings"
     }
 )
+
+# $checks = @(
+#     @{
+#         Name = "DisableAllActiveX"
+#         Path = "HKCU:\Software\Microsoft\Office\Common\Security"
+#         Value = "DisableAllActiveX"
+#     },
+#     @{
+#         Name = "Excel VBAWarnings"
+#         Path = "HKCU:\Software\Microsoft\Office\16.0\Excel\Security"
+#         Value = "VBAWarnings"
+#     }
+# )
 
 foreach ($check in $checks)
 {
@@ -180,6 +255,62 @@ else
     Write-Host "Office Click-To-Run information not found."
 }
 
+# -----------------------------------------------------
+# Mark of the Web (MOTW) Check
+# -----------------------------------------------------
+
+Write-Host ""
+Write-Host "----------------------------------------------------"
+Write-Host "Mark of the Web (MOTW) Check"
+Write-Host "----------------------------------------------------"
+
+$filePath = Read-Host "Enter path to XLSM file (or press Enter to skip)"
+
+if ((null -ne $filePath) -and ($filePath -ne ""))
+{
+    if (Test-Path $filePath)
+    {
+        try
+        {
+            $streams = Get-Item -Path $filePath -Stream * -ErrorAction Stop
+
+            $zoneStream = $streams | Where-Object {
+                $_.Stream -eq "Zone.Identifier"
+            }
+
+            if ($zoneStream)
+            {
+                Write-Host ""
+                Write-Host "MOTW DETECTED"
+                Write-Host "The file contains a Zone.Identifier alternate data stream."
+                Write-Host ""
+
+                Write-Host "Zone.Identifier Contents:"
+                Write-Host "------------------------"
+
+                Get-Content "$filePath`:Zone.Identifier"
+            }
+            else
+            {
+                Write-Host ""
+                Write-Host "No Mark-of-the-Web detected."
+            }
+        }
+        catch
+        {
+            Write-Host "Unable to check alternate data streams."
+            Write-Host $_.Exception.Message
+        }
+    }
+    else
+    {
+        Write-Host "File not found."
+    }
+}
+else
+{
+    Write-Host "MOTW check skipped."
+}
 # -----------------------------------------------------
 # Interpretation Guide
 # -----------------------------------------------------
