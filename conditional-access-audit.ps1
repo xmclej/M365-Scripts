@@ -137,6 +137,25 @@ foreach ($policy in $policies) {
     # -----------------------------
     $grantControls = $policy.GrantControls.BuiltInControls -join ","
     $requiresMFA = $policy.GrantControls.BuiltInControls -contains "mfa"
+    $isBlockPolicy = $policy.GrantControls.BuiltInControls -contains "block"
+
+    $hasSessionControls =
+        $policy.SessionControls.SignInFrequency -or
+        $policy.SessionControls.PersistentBrowser -or
+        $policy.SessionControls.ApplicationEnforcedRestrictions -or
+        $policy.SessionControls.CloudAppSecurity
+
+    $hasDeviceControls =
+        $policy.GrantControls.BuiltInControls -contains "compliantDevice" -or
+        $policy.GrantControls.BuiltInControls -contains "domainJoinedDevice" -or
+        $policy.GrantControls.BuiltInControls -contains "approvedApplication"
+
+    $hasSecurityControl =
+        $requiresMFA -or
+        $isBlockPolicy -or
+        $hasSessionControls -or
+        $hasDeviceControls
+
 
     # -----------------------------
     # RISK DETECTION
@@ -156,14 +175,14 @@ foreach ($policy in $policies) {
     if ($policy.State -eq "enabled") {
         if ($targetsAllUsers -and -not $hasExclusions) {
             $highRisk = $true
-            $riskReasons += "All users no exclusions"}
-        if (-not $requiresMFA) {
+            $riskReasons += "All users no exclusions" }
+        if (-not $hasSecurityControl) {
             $highRisk = $true
-            $riskReasons += "No MFA enforced"}
+            $riskReasons += "No security control enforced" }
         if ($targetsGlobalAdmin -and -not $requiresMFA) {
             $highRisk = $true
             $globalAdminNoMFA = $true
-            $riskReasons += "Global Admins without MFA"}}
+            $riskReasons += "Global Admins without MFA" }}
     # Break-glass detection
     $hasBreakGlass = $excludeUsers -match "breakglass|emergency"
     # Report-only
@@ -219,32 +238,28 @@ foreach ($policy in $policies) {
             "enabledForReportingButNotEnforced" { "Report-Only" }
             default { $policy.State }
         }
-
         IncludedSummary = ($includedSummary -join "|")
         ExcludedSummary = ($excludedSummary -join "|")
-
         IncludeUsers   = $includeUsers
         ExcludeUsers   = $excludeUsers
-
         IncludeGroups  = $includeGroups
         ExcludeGroups  = $excludeGroups
-
         IncludeRoles   = $includeRoles
         ExcludeRoles   = $excludeRoles
-
         GrantControls  = $grantControls
-        RequiresMFA    = $requiresMFA
+        RequiresMFA    = $requiresMFA        
+        IsBlockPolicy     = $isBlockPolicy
+        HasSessionControls = $hasSessionControls
+        HasDeviceControls  = $hasDeviceControls
+        HasSecurityControl = $hasSecurityControl
         TargetResources = $targetResources
         Conditions      = $conditionsSummary
         SessionControls = $sessionSummary
-
         TargetsGlobalAdmin = $targetsGlobalAdmin
         GlobalAdminNoMFA   = $globalAdminNoMFA
-
         HighRisk      = $highRisk
         RiskScore     = $riskScore
         RiskReasons   = ($riskReasons -join "; ")
-
         HasBreakGlass = $hasBreakGlass
         ReportOnly    = $isReportOnly
     }
@@ -293,7 +308,18 @@ $totalPolicies = $results.Count
 $highRiskCount = ($results | Where-Object { $_.HighRisk }).Count
 $adminRiskCount = ($results | Where-Object { $_.GlobalAdminNoMFA }).Count
 $mfaCount = ($results | Where-Object { $_.RequiresMFA }).Count
-$noMfaCount = $totalPolicies - $mfaCount
+$blockCount = ($results | Where-Object { $_.GrantControls -match "block" } ).Count
+$noMfaCount = $totalPolicies - $mfaCount - $blockCount
+
+$sessionControlCount = ( $results | Where-Object {$_.HasSessionControls} ).Count
+
+$unprotectedCount = ( $results |
+    Where-Object {
+        -not $_.RequiresMFA -and
+        -not $_.IsBlockPolicy -and
+        -not $_.HasSessionControls
+    } ).Count
+
 
 # Enhance dataset
 $enhancedResults = $results | ForEach-Object {
@@ -309,8 +335,8 @@ $enhancedResults = $results | ForEach-Object {
     if ($_.GlobalAdminNoMFA) {
         $recommendation = "Enforce MFA for all admin roles immediately"
     }
-    elseif ($_.RiskReasons -match "No MFA") {
-        $recommendation = "Enable MFA enforcement"
+    elseif ($_.RiskReasons -match "No security control") {
+        $recommendation = "Apply MFA, device, block, or session controls"
     }
     elseif ($_.RiskReasons -match "no exclusions") {
         $recommendation = "Add break-glass exclusions"
@@ -327,6 +353,7 @@ $enhancedResults = $results | ForEach-Object {
         ExcludedSummary = $_.ExcludedSummary
 
         RequiresMFA = $_.RequiresMFA
+        IsBlockPolicy = $_.IsBlockPolicy
         IncludeGroups = $_.IncludeGroups
         ExcludeGroups = $_.ExcludeGroups
         IncludeRoles = $_.IncludeRoles
@@ -355,6 +382,15 @@ $html = @"
 
 <style>
 body { background:#f4f6f8; }
+
+/* Chart handling */
+.chart-container {
+    position: relative;
+    height: 350px;
+    max-height: 350px;
+    max-width: 500px;
+    margin: 0 auto;
+}
 
 /* Table handling */
 #policyTable td,
@@ -449,16 +485,21 @@ tr.critical { background:#ffcccc; }
 <li>Total policies: <b>$totalPolicies</b></li>
 <li>High-risk policies: <b>$highRiskCount</b></li>
 <li>MFA Enabled: <b>$mfaCount</b></li>
-<li>No MFA: <b>$noMfaCount</b></li>
+<li>Block Policies: <b>$blockCount</b></li>
+<li>No MFA / Not Blocking: <b>$noMfaCount</b></li>
 </ul>
 
 <!-- CHARTS -->
 <div class="row mb-4">
     <div class="col-md-6">
-        <canvas id="riskChart"></canvas>
+        <div class="chart-container">
+            <canvas id="riskChart"></canvas>
+        </div>   
     </div>
     <div class="col-md-6">
-        <canvas id="mfaChart"></canvas>
+        <div class="chart-container">
+            <canvas id="mfaChart"></canvas>
+        </div>
     </div>
 </div>
 
@@ -703,17 +744,25 @@ new Chart(document.getElementById('riskChart'), {
             data: Object.values(riskCounts),
             backgroundColor: ["#A80000","#D83B01","#FFB900","#107C10"]
         }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false
     }
 });
 
 new Chart(document.getElementById('mfaChart'), {
     type: 'doughnut',
     data: {
-        labels:["MFA Enabled","No MFA"],
+        labels:["MFA Enabled","Block","Session Controls","No Controls"],
         datasets:[{
-            data: [$mfaCount,$noMfaCount],
-            backgroundColor:["#107C10","#D83B01"]
+            data: [$mfaCount,$blockCount,$noMfaCount],
+            backgroundColor:["#107C10","#0078D4","#D83B01"]
         }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false
     }
 });
 
