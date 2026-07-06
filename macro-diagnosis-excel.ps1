@@ -194,7 +194,7 @@ $checks = @(
         Value = "DisableAllActiveX"
     },
         @{
-        Name = "Excel Trusted documnets"
+        Name = "Excel Trusted documents"
         Path = "HKCU:\Software\Microsoft\Office\16.0\Excel\Security\Trusted Documents"
         Value = "DisableTrustedDocuments"
     }
