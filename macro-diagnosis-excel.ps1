@@ -1,4 +1,4 @@
-$LogFile = "$env:TEMP\Macro-Diagnostics.txt"
+$LogFile = "Macro-Diagnostics.txt"
 
 if (Test-Path $LogFile) {
     Remove-Item $LogFile -Force
