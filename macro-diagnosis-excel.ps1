@@ -56,8 +56,11 @@ Get-RegKey `
     -Path "HKCU:\Software\Policies\Microsoft\Office\16.0\Common\Security" `
     -Title "Office 16 Common Security Policies"
 
-    reg query "HKCU\Software\Microsoft\Office\16.0\Excel\Security" /v BlockContentExecutionFromInternet
-`
+Get-RegKey `
+    -Path "HKCU\Software\Policies\Microsoft\Office\16.0\Excel\Security\Trusted Documents" `
+    -Title "Excel Trusted Documents"
+
+
 # -----------------------------------------------------
 # User Excel Security Settings
 # -----------------------------------------------------
@@ -159,28 +162,6 @@ if (Test-Path $zoneMap)
         catch {}
     }
 }    
-# # -----------------------------------------------------
-# # SharePoint / Internet Zone Assignments
-# # -----------------------------------------------------
-
-# Write-Log ""
-# Write-Log "----------------------------------------------------"
-# Write-Log "Internet Explorer Zone Assignments"
-# Write-Log "----------------------------------------------------"
-
-# $zoneMap = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap"
-
-# if (Test-Path $zoneMap)
-# {
-#     Get-ChildItem $zoneMap -Recurse |
-#         ForEach-Object {
-#             try {
-#                 Get-ItemProperty $_.PSPath |
-#                     Format-List
-#             }
-#             catch {}
-#         }
-# }
 
 # -----------------------------------------------------
 # Key Registry Values
@@ -211,21 +192,15 @@ $checks = @(
         Name = "DisableAllActiveX"
         Path = "HKCU:\Software\Microsoft\Office\Common\Security"
         Value = "DisableAllActiveX"
+    },
+        @{
+        Name = "Excel Trusted documnets"
+        Path = "HKCU:\Software\Microsoft\Office\16.0\Excel\Security\Trusted Documents"
+        Value = "DisableTrustedDocuments"
     }
 )
 
-# $checks = @(
-#     @{
-#         Name = "DisableAllActiveX"
-#         Path = "HKCU:\Software\Microsoft\Office\Common\Security"
-#         Value = "DisableAllActiveX"
-#     },
-#     @{
-#         Name = "Excel VBAWarnings"
-#         Path = "HKCU:\Software\Microsoft\Office\16.0\Excel\Security"
-#         Value = "VBAWarnings"
-#     }
-# )
+
 
 foreach ($check in $checks)
 {
