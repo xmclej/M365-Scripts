@@ -51,8 +51,8 @@ $Checks = @(
 
 $Results = foreach ($Item in $Checks) {
 
-    $CurrentValue = $null
-    $Status = "NOT FOUND"
+    $CurrentValue = "<Path Missing>"
+    $Status = "PATH NOT FOUND"
 
     if (Test-Path $Item.Path) {
 
@@ -60,7 +60,11 @@ $Results = foreach ($Item in $Checks) {
             $RegData = Get-ItemProperty -Path $Item.Path -Name $Item.Name -ErrorAction Stop
             $CurrentValue = $RegData.($Item.Name)
 
-            if ($CurrentValue -eq $Item.Expected) {
+            if ($null -eq $CurrentValue) {
+                $CurrentValue = "<Null>"
+                $Status = "VALUE EMPTY"
+            }
+            elseif ($CurrentValue -eq $Item.Expected) {
                 $Status = "PASS"
             }
             else {
@@ -69,7 +73,7 @@ $Results = foreach ($Item in $Checks) {
         }
         catch {
             $CurrentValue = "<Value Missing>"
-            $Status = "NOT FOUND"
+            $Status = "VALUE NOT FOUND"
         }
     }
 
