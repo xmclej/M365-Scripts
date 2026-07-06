@@ -36,8 +36,7 @@ Write-Log "===================================================="
 Write-Log "Excel Macro / ActiveX Diagnostic Script"
 Write-Log "===================================================="
 Write-Log ""
-
-
+$DateTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 Write-Log "Run Date/Time : $DateTime"
 Write-Log "User: $env:USERNAME"
 Write-Log "Computer: $env:COMPUTERNAME"
