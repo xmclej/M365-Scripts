@@ -130,7 +130,6 @@ $Results = foreach ($Item in $Checks) {
 }
 
 # Export detailed results
-# Sort-Object RegistryPath, ValueName |
 $Results |
     Sort-Object @{Expression='MacroImpact';Descending=$true}, RegistryPath, ValueName
     Export-Csv -Path $OutputFile -NoTypeInformation -Encoding UTF8
