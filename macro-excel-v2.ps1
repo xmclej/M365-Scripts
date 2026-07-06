@@ -1,9 +1,13 @@
 # Excel Macro and Office Hardening Audit
-# Output file: Excel_Security_Audit_yyyyMMdd_HHmmss.txt
+# Output: Excel_Security_Audit_yyyyMMdd_HHmmss.csv
 
 $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$OutputFile = "Excel_Security_Audit_$Timestamp.txt"
+$OutputFile = "Excel_Security_Audit_$Timestamp.csv"
+$AuditTime = Get-Date
 
+# ------------------------------
+# Add Checks here
+# ------------------------------
 $Checks = @(
     @{Path='HKCU:\Software\Policies\Microsoft\Office\16.0\Excel\Security';Name='AccessVBOM';Expected=0}
     @{Path='HKCU:\Software\Policies\Microsoft\Office\16.0\Excel\Security\Trusted Locations';Name='AllowNetworkLocations';Expected=0}
@@ -49,6 +53,9 @@ $Checks = @(
     @{Path='HKCU:\Software\Policies\Microsoft\Office\Common\Security';Name='DisableAllActiveX';Expected=1}
 )
 
+# ------------------------------
+# PERFORM CHECKS
+# ------------------------------
 $Results = foreach ($Item in $Checks) {
 
     $CurrentValue = "<Path Missing>"
@@ -78,75 +85,67 @@ $Results = foreach ($Item in $Checks) {
     }
 
     [PSCustomObject]@{
+        AuditTime    = $AuditTime
         RegistryPath = $Item.Path
         ValueName    = $Item.Name
         CurrentValue = $CurrentValue
         Expected     = $Item.Expected
         Status       = $Status
+
+        MacroImpact = switch ($Item.Name) {
+            'VBAWarnings' { 'HIGH' }
+            'blockcontentexecutionfrominternet' { 'HIGH' }
+            'DisableTrustedDocuments' { 'HIGH' }
+            'DisableTrustedDocumentsOnNetwork' { 'HIGH' }
+            'DisableTrustedLocations' { 'HIGH' }
+            'AllowNetworkLocations' { 'HIGH' }
+            'RequireAddinSig' { 'HIGH' }
+            'AccessVBOM' { 'MEDIUM' }
+            'DisableAllActiveX' { 'MEDIUM' }
+            'MacroRuntimeScanScope' { 'MEDIUM' }
+            default { 'LOW' }
+        }
+        MacroExecutionRisk = switch ($Item.Name) {
+            'VBAWarnings' { 'Can block VBA execution' }
+            'blockcontentexecutionfrominternet' { 'Blocks MOTW files' }
+            'DisableTrustedLocations' { 'Prevents trusted shares' }
+            'DisableTrustedDocuments' { 'Prevents document trust' }
+            'RequireAddinSig' { 'Unsigned add-ins blocked' }
+            'DisableAllActiveX' { 'ActiveX controls blocked' }
+            default { '' }
+        }
+        PolicyEffect = switch ($Item.Name) {
+            'VBAWarnings' { 'Controls VBA execution' }
+            'blockcontentexecutionfrominternet' { 'Blocks macros from internet files' }
+            'DisableTrustedDocuments' { 'Disables document trust' }
+            'DisableTrustedDocumentsOnNetwork' { 'Disables trust on network files' }
+            'DisableTrustedLocations' { 'Disables trusted locations' }
+            'AllowNetworkLocations' { 'Controls network trusted locations' }
+            'RequireAddinSig' { 'Requires signed add-ins' }
+            'DisableAllActiveX' { 'Blocks ActiveX controls' }
+            'MacroRuntimeScanScope' { 'Controls runtime AV scanning of macros' }
+            default { '' }
+        }
     }
 }
 
-# Write detailed results
-"Excel Security Configuration Audit" | Out-File $OutputFile
-"Generated: $(Get-Date)" | Out-File $OutputFile -Append
-"" | Out-File $OutputFile -Append
-
+# Export detailed results
 $Results |
-    Sort-Object RegistryPath, ValueName |
-    Format-Table -AutoSize |
-    Out-String |
-    Out-File $OutputFile -Append
-
-# Macro-relevant summary
-$MacroCritical = @(
-    'VBAWarnings',
-    'blockcontentexecutionfrominternet',
-    'DisableTrustedDocuments',
-    'DisableTrustedDocumentsOnNetwork',
-    'DisableTrustedLocations',
-    'AllowNetworkLocations',
-    'AccessVBOM',
-    'RequireAddinSig',
-    'MacroRuntimeScanScope'
-)
-
-$Summary = $Results | Where-Object {
-    $_.ValueName -in $MacroCritical
-}
-
-"" | Out-File $OutputFile -Append
-"==================================================================" | Out-File $OutputFile -Append
-"EXCEL MACRO EXECUTION IMPACT SUMMARY" | Out-File $OutputFile -Append
-"==================================================================" | Out-File $OutputFile -Append
-
-$Summary |
-    Format-Table ValueName,CurrentValue,Expected,Status -AutoSize |
-    Out-String |
-    Out-File $OutputFile -Append
-
-"" | Out-File $OutputFile -Append
-"Interpretation of Key Macro Controls:" | Out-File $OutputFile -Append
-"--------------------------------------------------------------" | Out-File $OutputFile -Append
-"VBAWarnings" | Out-File $OutputFile -Append
-"  1 = Disable VBA macros with notification." | Out-File $OutputFile -Append
-"blockcontentexecutionfrominternet" | Out-File $OutputFile -Append
-"  1 = Block macros in files carrying Mark-of-the-Web." | Out-File $OutputFile -Append
-"DisableTrustedDocuments" | Out-File $OutputFile -Append
-"  1 = Users cannot trust documents to bypass macro restrictions." | Out-File $OutputFile -Append
-"DisableTrustedDocumentsOnNetwork" | Out-File $OutputFile -Append
-"  1 = Network documents cannot become trusted." | Out-File $OutputFile -Append
-"DisableTrustedLocations" | Out-File $OutputFile -Append
-"  1 = Trusted Locations feature disabled." | Out-File $OutputFile -Append
-"AllowNetworkLocations" | Out-File $OutputFile -Append
-"  0 = Network paths cannot be used as trusted locations." | Out-File $OutputFile -Append
-"AccessVBOM" | Out-File $OutputFile -Append
-"  0 = VBA projects cannot access VBA object model." | Out-File $OutputFile -Append
-"RequireAddinSig" | Out-File $OutputFile -Append
-"  1 = Excel add-ins must be signed." | Out-File $OutputFile -Append
-"MacroRuntimeScanScope" | Out-File $OutputFile -Append
-"  2 = Runtime scanning of macros enabled." | Out-File $OutputFile -Append
+    # Sort-Object RegistryPath, ValueName |
+    Sort-Object @{Expression='MacroImpact';Descending=$true}, RegistryPath, ValueName
+    Export-Csv -Path $OutputFile -NoTypeInformation -Encoding UTF8
 
 Write-Host ""
 Write-Host "Audit complete."
 Write-Host "Results written to:"
 Write-Host (Resolve-Path $OutputFile)
+
+Write-Host ""
+Write-Host "Status Summary"
+Write-Host "--------------"
+
+$Results |
+    Group-Object Status |
+    Sort-Object Name |
+    Select-Object Name, Count |
+    Format-Table -AutoSize
