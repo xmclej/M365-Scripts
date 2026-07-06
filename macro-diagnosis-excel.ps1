@@ -4,6 +4,9 @@ if (Test-Path $LogFile) {
     Remove-Item $LogFile -Force
 }
 
+# -----------------------------------------------------
+# Functions
+# -----------------------------------------------------
 function Write-Log {
     param(
         [string]$Message
@@ -11,23 +14,15 @@ function Write-Log {
 
     $Message | Out-File -FilePath $LogFile -Append -Encoding UTF8
 }
-
-Write-Log "===================================================="
-Write-Log "Excel Macro / ActiveX Diagnostic Script"
-Write-Log "===================================================="
-Write-Log ""
-
 function Get-RegKey {
     param(
         [string]$Path,
         [string]$Title
     )
-
     Write-Log ""
     Write-Log "----------------------------------------------------"
     Write-Log $Title
     Write-Log "----------------------------------------------------"
-
     if (Test-Path $Path) {
         Get-ItemProperty -Path $Path |
             Format-List *
@@ -37,6 +32,13 @@ function Get-RegKey {
     }
 }
 
+Write-Log "===================================================="
+Write-Log "Excel Macro / ActiveX Diagnostic Script"
+Write-Log "===================================================="
+Write-Log ""
+
+
+Write-Log "Run Date/Time : $DateTime"
 Write-Log "User: $env:USERNAME"
 Write-Log "Computer: $env:COMPUTERNAME"
 Write-Log ""
