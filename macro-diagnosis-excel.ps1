@@ -1,4 +1,4 @@
-$LogFile = "Macro-Diagnostics.txt"
+$LogFile = "Macro-Diagnostics-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
 
 if (Test-Path $LogFile) {
     Remove-Item $LogFile -Force
@@ -36,8 +36,6 @@ Write-Log "===================================================="
 Write-Log "Excel Macro / ActiveX Diagnostic Script"
 Write-Log "===================================================="
 Write-Log ""
-$DateTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-Write-Log "Run Date/Time : $DateTime"
 Write-Log "User: $env:USERNAME"
 Write-Log "Computer: $env:COMPUTERNAME"
 Write-Log ""
