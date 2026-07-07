@@ -164,6 +164,7 @@ $Results = foreach ($Item in $Checks) {
     $CurrentValue = "<Path Missing>"
     $Status = "PATH NOT FOUND"
     $FoundPath = ""
+    $SearchedPaths = ""
 
     # Support both new Paths=@() format and old Path='' format
     if ($Item.ContainsKey('Paths')) {
@@ -172,6 +173,8 @@ $Results = foreach ($Item in $Checks) {
     else {
         $PathsToCheck = @($Item.Path)
     }
+
+    $SearchedPaths = $PathsToCheck -join "; "
 
     foreach ($Path in $PathsToCheck) {
 
@@ -222,7 +225,8 @@ $Results = foreach ($Item in $Checks) {
 
     [PSCustomObject]@{
         AuditTime          = $AuditTime
-        RegistryPath       = $FoundPath
+        RegistryPath       = if ($FoundPath) { $FoundPath } else { "<Not Found>" }
+        SearchedPaths      = $SearchedPaths
         ValueName          = $Item.Name
         CurrentValue       = $CurrentValue
         Expected           = $Item.Expected
