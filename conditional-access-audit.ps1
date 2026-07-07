@@ -138,12 +138,59 @@ foreach ($policy in $policies) {
     $requiresMFA = $policy.GrantControls.BuiltInControls -contains "mfa"
     $isBlockPolicy = $policy.GrantControls.BuiltInControls -contains "block"
 
-    $hasSessionControls =
-        $policy.SessionControls.SignInFrequency -or
-        $policy.SessionControls.PersistentBrowser -or
-        $policy.SessionControls.ApplicationEnforcedRestrictions -or
-        $policy.SessionControls.CloudAppSecurity
+# if ($policy.DisplayName -match '^CA(111|130|205)') {
 
+#     Write-Host ""
+#     Write-Host "================================="
+#     Write-Host $policy.DisplayName
+#     Write-Host "================================="
+
+#     $policy.SessionControls | ConvertTo-Json -Depth 10
+# }
+
+    # -----------------------------
+    # SESSION CONTROLS
+    # -----------------------------
+    $sessionSummary = @()
+
+    if ($policy.SessionControls.SignInFrequency.IsEnabled) {
+
+        $sif = $policy.SessionControls.SignInFrequency
+
+        if ($sif.FrequencyInterval -eq "everyTime") {
+            $sessionSummary += "Sign-in Frequency (Every Time)"
+        }
+        elseif ($sif.FrequencyInterval -eq "timeBased") {
+            $sessionSummary += "Sign-in Frequency ($($sif.Value) $($sif.Type))"
+        }
+        else {
+            $sessionSummary += "Sign-in Frequency"
+        }
+    }
+
+    if ($policy.SessionControls.PersistentBrowser.IsEnabled) {
+        $sessionSummary += "Persistent Browser"
+    }
+
+    if ($policy.SessionControls.ApplicationEnforcedRestrictions.IsEnabled) {
+        $sessionSummary += "App Restrictions"
+    }
+
+    if ($policy.SessionControls.CloudAppSecurity.IsEnabled) {
+        $sessionSummary += "Cloud App Security"
+    }
+
+    if ($policy.SessionControls.SecureSignInSession.IsEnabled) {
+        $sessionSummary += "Secure Sign-In Session"
+    }
+
+    $hasSessionControls = $sessionSummary.Count -gt 0
+
+    $sessionSummary = $sessionSummary -join ", "
+
+    # -----------------------------
+    # DEVICE CONTROLS
+    # -----------------------------
     $hasDeviceControls =
         $policy.GrantControls.BuiltInControls -contains "compliantDevice" -or
         $policy.GrantControls.BuiltInControls -contains "domainJoinedDevice" -or
@@ -158,10 +205,16 @@ foreach ($policy in $policies) {
     $controlType = switch ($true) {
         $requiresMFA       { "MFA"; break }
         $isBlockPolicy     { "Block"; break }
-        $hasSessionControls { "Session"; break }
         $hasDeviceControls { "Device"; break }
+        $hasSessionControls { "Session"; break }
         default            { "None" }
     }
+    # -----------------------------
+    # TARGET RESOURCES
+    # -----------------------------
+    $targetResources =
+        ($conditions.Applications.IncludeApplications -join ",")
+
     # -----------------------------
     # RISK DETECTION
     # -----------------------------
@@ -191,7 +244,7 @@ foreach ($policy in $policies) {
     # Break-glass detection
     $hasBreakGlass = $excludeUsers -match "breakglass|emergency"
     # Report-only
-    $isReportOnly = $policy.State -eq "enabledForReportingButNotEnforced"
+    # $isReportOnly = $policy.State -eq "enabledForReportingButNotEnforced"
     # Risk score
     $riskScore = $riskReasons.Count
 
@@ -221,6 +274,11 @@ foreach ($policy in $policies) {
     # -----------------------------
     # CONDITIONS SUMMARY
     # -----------------------------
+if ($policy.DisplayName -match '^CA(140)') {
+    Write-Host $policy.DisplayName
+    $policy.Conditions | ConvertTo-Json -Depth 10
+    # $conditions.ClientAppTypes | ConvertTo-Json -Depth 10
+}
     $conditionsSummary = @()
     if ($conditions.UserRiskLevels.Count -gt 0) {
         $conditionsSummary += "User Risk: $($conditions.UserRiskLevels -join ', ')"}
@@ -228,8 +286,12 @@ foreach ($policy in $policies) {
         $conditionsSummary += "Sign-In Risk: $($conditions.SignInRiskLevels -join ', ')"}
     if ($conditions.Platforms.IncludePlatforms.Count -gt 0) {
         $conditionsSummary += "Platforms: $($conditions.Platforms.IncludePlatforms -join ', ')"}
-    if ($conditions.ClientAppTypes.Count -gt 0) {
-        $conditionsSummary += "Apps: $($conditions.ClientAppTypes -join ', ')"}
+    if (
+        $conditions.ClientAppTypes.Count -gt 0 -and
+        -not ($conditions.ClientAppTypes.Count -eq 1 -and
+        $conditions.ClientAppTypes[0] -eq "all")
+        )
+        {$conditionsSummary += "Apps: $($conditions.ClientAppTypes -join ', ')"}
     $conditionsSummary = $conditionsSummary -join "; "
 
     # -----------------------------
@@ -267,7 +329,7 @@ foreach ($policy in $policies) {
         RiskScore     = $riskScore
         RiskReasons   = ($riskReasons -join "; ")
         HasBreakGlass = $hasBreakGlass
-        ReportOnly    = $isReportOnly
+        ReportOnly    = $ReportOnly
     }
 }
 
@@ -313,22 +375,59 @@ $htmlOutput = ".\CA-Policy-Dashboard_$timestamp.html"
 $totalPolicies = $results.Count
 $highRiskCount = ($results | Where-Object { $_.HighRisk }).Count
 $adminRiskCount = ($results | Where-Object { $_.GlobalAdminNoMFA }).Count
-$reportOnlyCount = ($results | Where-Object { $_.ReportOnly } ).Count
-$mfaCount = ($results | Where-Object { $_.RequiresMFA }).Count
+$reportOnlyCount = ($results | Where-Object { $_.State -eq "Report-Only" } ).Count
+$enabledCount = ($results | Where-Object { $_.State -eq "Enabled" }).Count
 $blockCount = ($results | Where-Object { $_.GrantControls -match "block" } ).Count
-$noMfaCount = $totalPolicies - $mfaCount - $blockCount
+$mfaCount = ($results | Where-Object {$_.ControlType -eq "MFA"}).Count
+$blockCount = ($results | Where-Object {$_.ControlType -eq "Block"}).Count
+$sessionCount = ($results | Where-Object {$_.ControlType -eq "Session"}).Count
+$deviceCount = ($results | Where-Object {$_.ControlType -eq "Device"}).Count
+$noControlCount = ($results | Where-Object {$_.ControlType -eq "None"}).Count
 
-$sessionControlCount = ( $results | Where-Object {$_.HasSessionControls} ).Count
+# $sessionControlCount = ( $results | Where-Object {$_.HasSessionControls} ).Count
+# $unprotectedCount = ( $results |
+#     Where-Object {
+#         -not $_.RequiresMFA -and
+#         -not $_.IsBlockPolicy -and
+#         -not $_.HasSessionControls
+#     } ).Count
 
-$unprotectedCount = ( $results |
-    Where-Object {
-        -not $_.RequiresMFA -and
-        -not $_.IsBlockPolicy -and
-        -not $_.HasSessionControls
-    } ).Count
+# -----------------------------
+# MATURITY SCORE
+# -----------------------------
+$maturityPoints =
+    ($mfaCount * 4) +
+    ($blockCount * 3) +
+    ($sessionCount * 2) +
+    ($deviceCount * 2)
 
+$maxPoints = $totalPolicies * 4
 
+$maturityScore = [Math]::Round(
+    (($maturityPoints / $maxPoints) * 100),
+    0
+)
+
+# -----------------------------
+# UNRESOLVED OBJECTS
+# -----------------------------
+$unresolvedUsers =
+(   $results |
+    Select-String "UNRESOLVED_USER" -AllMatches
+).Matches.Count
+
+$unresolvedGroups =
+(   $results |
+    Select-String "UNRESOLVED_GROUP" -AllMatches
+).Matches.Count
+
+$unresolvedObjectCount =
+    $unresolvedUsers +
+    $unresolvedGroups
+
+# -----------------------------
 # Enhance dataset
+# -----------------------------
 $enhancedResults = $results | ForEach-Object {
 
     $severity = "Low"
@@ -351,10 +450,12 @@ $enhancedResults = $results | ForEach-Object {
 
     [PSCustomObject]@{
         PolicyName = $_.PolicyName
-        State      = $_.State
+        State = $_.State
         RiskScore  = $_.RiskScore
         Severity   = $severity
         HighRisk   = $_.HighRisk
+        TargetsGlobalAdmin = $_.TargetsGlobalAdmin
+        HasBreakGlass      = $_.HasBreakGlass
         IncludedSummary = $_.IncludedSummary
         ExcludedSummary = $_.ExcludedSummary
         RequiresMFA = $_.RequiresMFA
@@ -369,8 +470,12 @@ $enhancedResults = $results | ForEach-Object {
         ExcludeRoles = $_.ExcludeRoles
         IncludeUsers = $_.IncludeUsers
         ExcludeUsers = $_.ExcludeUsers
+        TargetResources = $_.TargetResources
+        Conditions      = $_.Conditions
+        SessionControls = $_.SessionControls
         RiskReasons = $_.RiskReasons
         Recommendation = $recommendation
+        ReportOnly    = $_.ReportOnly
     }
 }
 
@@ -466,31 +571,52 @@ tr.critical { background:#ffcccc; }
 
 <!-- KPI CARDS -->
 <div class="row mb-4">
-    <div class="col-md-4">
+    <div class="col-md">
         <div class="card text-white bg-primary text-center p-3">
             <h5>Total Policies</h5>
             <h2>$totalPolicies</h2>
         </div>
     </div>
 
-    <div class="col-md-4">
+    <div class="col-md">
         <div class="card text-white bg-danger text-center p-3">
             <h5>High Risk</h5>
             <h2>$highRiskCount</h2>
         </div>
     </div>
 
-    <div class="col-md-4">
+    <div class="col-md">
         <div class="card text-white bg-dark text-center p-3">
             <h5>Admin No MFA</h5>
             <h2>$adminRiskCount</h2>
         </div>
     </div>
 
-    <div class="col-md-4">
+    <div class="col-md">
+        <div class="card text-white bg-dark text-center p-3">
+            <h5>Enabled</h5>
+            <h2>$enabledCount</h2>
+        </div>
+    </div>
+
+    <div class="col-md">
         <div class="card text-white bg-dark text-center p-3">
             <h5>Report Only</h5>
             <h2>$reportOnlyCount</h2>
+        </div>
+    </div>
+    
+    <div class="col-md">
+        <div class="card text-white bg-secondary text-center p-3">
+            <h5>Unresolved Objects</h5>
+            <h2>$unresolvedObjectCount</h2>
+        </div>
+    </div>
+
+    <div class="col-md">
+        <div class="card text-white bg-success text-center p-3">
+            <h5>CA Maturity</h5>
+            <h2>$maturityScore%</h2>
         </div>
     </div>
 </div>
@@ -499,10 +625,14 @@ tr.critical { background:#ffcccc; }
 <h3>Executive Summary</h3>
 <ul>
 <li>Total policies: <b>$totalPolicies</b></li>
-<li>High-risk policies: <b>$highRiskCount</b></li>
-<li>MFA Enabled: <b>$mfaCount</b></li>
-<li>Block Policies: <b>$blockCount</b></li>
-<li>No MFA / Not Blocking: <b>$noMfaCount</b></li>
+<li>Conditional Access maturity: <b>$maturityScore%</b></li>
+<li>MFA policies: <b>$mfaCount</b></li>
+<li>Block policies: <b>$blockCount</b></li>
+<li>Session control policies: <b>$sessionCount</b></li>
+<li>Device control policies: <b>$deviceCount</b></li>
+<li>No security controls: <b>$noControlCount</b></li>
+<li>Report-only policies: <b>$reportOnlyCount</b></li>
+<li>Unresolved objects: <b>$unresolvedObjectCount</b></li>
 </ul>
 
 <!-- CHARTS -->
@@ -539,6 +669,7 @@ tr.critical { background:#ffcccc; }
             <th>Risk Score</th>
             <th>Severity</th>
             <th>MFA</th>
+            <th>Control</th>
             <th>Included</th>
             <th>Excluded</th>
             <th>Risk</th>
@@ -569,6 +700,7 @@ tr.critical { background:#ffcccc; }
                 <th>Session Controls</th>
                 <th onclick="sortDetailBy('risk')">Risk Score ↕</th>
                 <th onclick="sortDetailBy('severity')">Severity ↕</th>
+                <th>RiskReasons</th>
                 <th>Recommendation</th>
             </tr>
         </thead>
@@ -656,6 +788,7 @@ function renderTable() {
         html += "<td>" + (p.RiskScore ?? "") + "</td>";
         html += "<td><span class='badge " + severity + "B'>" + (p.Severity||"") + "</span></td>";
         html += "<td>" + (p.RequiresMFA ? "✅":"❌") + "</td>";
+        html += "<td>" + (p.ControlType || "") + "</td>";
         html += "<td>" + renderTargetSummary(p.IncludedSummary) + "</td>";
         html += "<td>" + renderTargetSummary(p.ExcludedSummary) + "</td>";
         html += "<td>" + (p.RiskReasons||"") + "</td>";
@@ -729,6 +862,9 @@ function renderFullTable() {
         html += "<td title=\"" + (p.ExcludeRoles||"").replace(/"/g,'&quot;') + "\">" + wrapCommas(p.ExcludeRoles||"") + "</td>";
         html += "<td title=\"" + (p.IncludeUsers||"").replace(/"/g,'&quot;') + "\">" + wrapCommas(p.IncludeUsers||"") + "</td>";
         html += "<td title=\"" + (p.ExcludeUsers||"").replace(/"/g,'&quot;') + "\">" + wrapCommas(p.ExcludeUsers||"") + "</td>";
+        html += "<td>" + (p.TargetResources || "") + "</td>";
+        html += "<td>" + (p.Conditions || "").replace(/;\s*/g, "<br>") + "</td>";
+        html += "<td>" + (p.SessionControls || "") + "</td>";
         html += "<td>" + (p.RiskScore ?? "") + "</td>";
         html += "<td>" + (p.Severity || "") + "</td>";
         html += "<td>" + (p.RiskReasons || "") + "</td>";
@@ -770,10 +906,10 @@ new Chart(document.getElementById('riskChart'), {
 new Chart(document.getElementById('mfaChart'), {
     type: 'doughnut',
     data: {
-        labels:["MFA Enabled","Block","Session Controls","No Controls"],
+        labels:["MFA","Block","Session","Device","No Controls"],
         datasets:[{
-            data: [$mfaCount,$blockCount,$noMfaCount],
-            backgroundColor:["#107C10","#0078D4","#FFB900","#D83B01"]
+            data: [$mfaCount,$blockCount,$sessionCount,$deviceCount,$noControlCount],
+            backgroundColor:["#107C10","#0078D4","#FFB900","#5C2D91","#D83B01"]
         }]
     },
     options: {
