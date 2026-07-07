@@ -1,9 +1,16 @@
 # Excel Macro and Office Hardening Audit
 # Output: Excel_Security_Audit_yyyyMMdd_HHmmss.csv
 
+
+$FirstName = Read-Host "Enter your first name"
+
+# Remove invalid filename characters and spaces
+$FirstName = ($FirstName -replace '[\\/:*?"<>| ]','')
+
 $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$OutputFile = "Excel_Security_Audit_$Timestamp.csv"
+$OutputFile = "${FirstName}_Excel_Security_Audit_$Timestamp.csv"
 $AuditTime = Get-Date
+
 
 # ------------------------------
 # Add Checks here
@@ -143,6 +150,9 @@ Write-Host (Resolve-Path $OutputFile)
 Write-Host ""
 Write-Host "Status Summary"
 Write-Host "--------------"
+
+Write-Host "Total Checks: $($Results.Count)"
+Write-Host ""
 
 $Results |
     Group-Object Status |
