@@ -1,6 +1,18 @@
 # -----------------------------
 # CONNECT
 # -----------------------------
+# If encounter module issues, remove all before importing the current Graph SDK
+    # Get-InstalledModule Microsoft.Graph* |
+    # Uninstall-Module -AllVersions -Force
+# Re-install Graph SDK
+    # Install-Module Microsoft.Graph -Scope CurrentUser -Force
+# Or just the modules used in this script
+    # Install-Module Microsoft.Graph.Authentication
+    # Install-Module Microsoft.Graph.Groups
+    # Install-Module Microsoft.Graph.Users
+    # Install-Module Microsoft.Graph.Identity.Governance
+    # Install-Module Microsoft.Graph.Identity.SignIns
+
 Connect-MgGraph -NoWelcome -Scopes "Policy.Read.All","Directory.Read.All","User.Read.All"
 
 $scriptTimer = [System.Diagnostics.Stopwatch]::StartNew()
@@ -370,7 +382,7 @@ Write-Host "Total runtime: $($scriptTimer.Elapsed.TotalSeconds) sec"
 # -----------------------------
 # FINAL HTML DASHBOARD (CHARTS + EXEC)
 # -----------------------------
-$htmlOutput = ".\CA-Policy-Dashboard_$timestamp.html"
+$htmlOutput = ".\Dashboard-CA-Policies_$timestamp.html"
 
 $totalPolicies = $results.Count
 $highRiskCount = ($results | Where-Object { $_.HighRisk }).Count
@@ -649,6 +661,16 @@ tr.critical { background:#ffcccc; }
     </div>
 </div>
 
+<!-- FILTERS -->
+<div id="activeFilter"
+     class="alert alert-info d-none">
+</div>
+<!-- CLEAR FILTERS -->
+<button class="btn btn-secondary mb-3"
+        onclick="clearFilters()">
+    Clear Filters
+</button>
+
 <!-- CONTROLS -->
 <div class="mb-3">
     <label class="form-label"><b>Sort By</b></label>
@@ -712,7 +734,10 @@ tr.critical { background:#ffcccc; }
 
 <script>
 
-let data = $jsonData;
+let allData = $jsonData;
+let data = [...allData];
+
+let activeFilter = null;
 
 // SORTING
 function applySort() {
@@ -739,6 +764,66 @@ function applySort() {
 
     renderTable();
 
+}
+// FILTERING
+
+function applyChartFilter(filterType, filterValue) {
+
+    if (
+        activeFilter &&
+        activeFilter.type === filterType &&
+        activeFilter.value === filterValue
+    ) {
+        clearFilters();
+        return;
+    }
+
+    activeFilter = {
+        type: filterType,
+        value: filterValue
+    };
+
+    if (filterType === "severity") {
+
+        data = allData.filter(p =>
+            (p.Severity || "Low") === filterValue
+        );
+    }
+
+    if (filterType === "control") {
+
+        data = allData.filter(p =>
+            (p.ControlType || "None") === filterValue
+        );
+    }
+
+    document
+        .getElementById("activeFilter")
+        .classList.remove("d-none");
+
+    document
+        .getElementById("activeFilter")
+        .innerHTML =
+            "<b>Active Filter:</b> " +
+            filterValue +
+            " (" + data.length + " policies)";
+
+    renderTable();
+    renderFullTable();
+}
+
+function clearFilters() {
+
+    activeFilter = null;
+
+    data = [...allData];
+
+    document
+        .getElementById("activeFilter")
+        .classList.add("d-none");
+
+    renderTable();
+    renderFullTable();
 }
 
 // BADGES
@@ -794,9 +879,7 @@ function renderTable() {
         html += "<td>" + (p.RiskReasons||"") + "</td>";
 
         row.innerHTML = html;
-        row.onclick = function() {
-          showDetails(p);
-        };
+
         tbody.appendChild(row);
     });
 }
@@ -834,6 +917,7 @@ function sortDetailBy(mode) {
         );
     }
     renderFullTable();
+    renderTable();
 }
 
 // WRAP TEXT ON COMMAS
@@ -875,9 +959,17 @@ function renderFullTable() {
     });
 }
 
-// DEFAULT SORT = RISK
-document.getElementById("sortMode").value = "risk";
+
+// INITIAL SORT BY POLICY NAME
+data.sort((a,b) =>
+    (a.PolicyName || "")
+        .localeCompare(b.PolicyName || "")
+);
+
+// DEFAULT SORT = Policy Name
+document.getElementById("sortMode").value = "name";
 applySort();
+renderTable();
 renderFullTable();
 
 // CHARTS
@@ -903,7 +995,10 @@ new Chart(document.getElementById('riskChart'), {
     }
 });
 
-new Chart(document.getElementById('mfaChart'), {
+const controlChart = new Chart(
+document.getElementById('mfaChart'),
+{
+//new Chart(document.getElementById('mfaChart'), {
     type: 'doughnut',
     data: {
         labels:["MFA","Block","Session","Device","No Controls"],
@@ -914,7 +1009,30 @@ new Chart(document.getElementById('mfaChart'), {
     },
     options: {
         responsive: true,
-        maintainAspectRatio: false
+        maintainAspectRatio: false,
+
+        onClick(evt, elements) {
+
+            if (!elements.length) return;
+
+            let index = elements[0].index;
+
+            let control =
+                this.data.labels[index];
+
+            if (control === "No Controls") {
+                applyChartFilter(
+                    "control",
+                    "None"
+                );
+                return;
+            }
+
+            applyChartFilter(
+                "control",
+                control
+            );
+        }
     }
 });
 
