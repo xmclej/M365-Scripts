@@ -174,14 +174,6 @@ if ($reportOnlyCount -gt 0) {
 Write-Host "Pulling MFA registration details..." -ForegroundColor Cyan
 $mfaDetails = Get-MgReportAuthenticationMethodUserRegistrationDetail -All
 
-# IsMfaRegistered, 
-# IsMfaCapable, 
-# IsPasswordlessCapable, 
-# IsSsprRegistered, 
-# IsSsprCapable, 
-# MethodsRegistered, 
-# LastUpdatedDateTime
-
 $mfaExport = foreach ($u in $mfaDetails) {
     [PSCustomObject]@{
         UserPrincipalName       = $u.UserPrincipalName
@@ -189,10 +181,11 @@ $mfaExport = foreach ($u in $mfaDetails) {
         IsAdmin                 = $u.IsAdmin
         IsMfaRegistered         = $u.IsMfaRegistered
         IsMfaCapable            = $u.IsMfaCapable
-        IsSsprRegistered        = $u.IsSsprRegistered
-        DefaultMfaMethod        = $u.DefaultMfaMethod
-        MethodsRegistered       = ($u.MethodsRegistered -join ";")   # fixes the array-to-string bug
         IsPasswordlessCapable   = $u.IsPasswordlessCapable
+        IsSsprRegistered        = $u.IsSsprRegistered
+        IsSsprCapable           = $u.IsSsprCapable
+        DefaultMfaMethod        = $u.DefaultMfaMethod
+        MethodsRegistered       = ($u.MethodsRegistered -join ";")   # fixes the array-to-string bug        
         UserPreferredMethodForSecondaryAuth = $u.UserPreferredMethodForSecondaryAuth
     }
 }

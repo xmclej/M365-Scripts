@@ -21,4 +21,20 @@ One licensing note: Copilot Studio agents run on their own metered credits, sepa
 If you want the agent to query live data at the moment you ask, rather than reading yesterday's export, give the Copilot Studio agent a custom connector action that calls the Graph endpoints directly (/identity/conditionalAccess/policies, /reports/authenticationMethods/userRegistrationDetails, /auditLogs/signIns) using the app registration from Phase 1. This is more engineering work up front, building and testing a custom connector, but once it's done, "sign in and ask" really does mean live data every time, no export step in between.
 
 ## Practical starting point
-Given where you already are, comfortable with Graph, PowerShell, and Terraform, I'd start with Phase 1 using your own scheduled script rather than learning Power Automate connectors from scratch. Get the agent and SharePoint grounding working with one client first, refine the prompt template against real output, then decide if the live-query version in Phase 2 is worth the extra build time. If you want, I can draft the actual Graph API calls and PowerShell export script for the three data sources, that part doesn't depend on which phase you land on.
+Given where you already are, comfortable with Graph, PowerShell, and Terraform, I'd start with Phase 1 using your own scheduled script rather than learning Power Automate connectors from scratch. Get the agent and SharePoint grounding working with one client first, refine the prompt template against real output, then decide if the live-query version in Phase 2 is worth the extra build time.
+
+
+# Process Overview
+1. Pull data
+2. Perform Analysis
+3. Report on gaps
+
+
+## Pull Data
+Creating script to pull data, this can be done manually or automated.
+Automation requires work
+
+
+
+## Perform Analysis
+Building an agent to pull the data from SharePoint
