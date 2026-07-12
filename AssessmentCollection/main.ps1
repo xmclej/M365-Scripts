@@ -132,11 +132,6 @@ foreach ($Collector in $CollectorsToRun) {
                 -Section $Section `
                 -ErrorRecord $_)
         )
-        # Write-AssessmentLog `
-        #     -Level "ERROR" `
-        #     -Component $Component `
-        #     -Section $Section `
-        #     -Message "$($Collector.Name) collector failed: $($_.Exception.Message)"
             
         $CollectorResults += [PSCustomObject]@{
             Collector = $Collector.Name

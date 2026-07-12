@@ -15,86 +15,23 @@ function Get-EntraCollector {
 # BP-CA-001 Report Only Policies
 # BP-CA-002 Named Locations Configured
 
-    . "$PSScriptRoot\Entra\Get-EntraLegacyAuthentication.ps1"
+    . "$PSScriptRoot\Entra\Get-EntraConditionalAccess.ps1"
     . "$PSScriptRoot\Entra\Get-EntraMFARegistration.ps1"
+    . "$PSScriptRoot\Entra\Get-EntraLegacyAuthentication.ps1"
     . "$PSScriptRoot\Entra\Get-EntraAuthenticationMethods.ps1"
-#     . "$PSScriptRoot\Entra\Get-EntraSecurityDefaults.ps1"
-#     . "$PSScriptRoot\Entra\Get-EntraDirectoryRoles.ps1"
-#     . "$PSScriptRoot\Entra\Get-EntraBreakGlassAccounts.ps1"
-#     . "$PSScriptRoot\Entra\Get-EntraNamedLocations.ps1"
-#     . "$PSScriptRoot\Entra\Get-EntraAuthenticationMethods.ps1"
 
-    # -------------------------------------------------------------------------
-    # FUNCTION: Resolve Identity Name
-    # ------------------------------------------------------------------------
-    function Resolve-IdentityName {
 
-        param([string]$Id)
-        $Section = "Resolve-IdentityName"
+    . "$PSScriptRoot\Entra\Get-EntraSecurityDefaults.ps1"
+    . "$PSScriptRoot\Entra\Get-EntraNamedLocations.ps1"    
+    . "$PSScriptRoot\Entra\Get-EntraDirectoryRoles.ps1"
+    . "$PSScriptRoot\Entra\Get-EntraBreakGlassAccounts.ps1"
 
-        try {
-
-            if ([string]::IsNullOrWhiteSpace($Id)) {
-                return $null
-            }
-
-            if ($Id -in @("All","None","GuestsOrExternalUsers")) {
-                return $Id
-            }
-
-            if ($identityCache.ContainsKey($Id)) {
-                return $identityCache[$Id]
-            }
-
-            $resolved = $Id
-
-            try {
-
-                $user = Get-MgUser `
-                    -UserId $Id `
-                    -Property DisplayName,UserPrincipalName `
-                    -ErrorAction Stop
-
-                $resolved = "$($user.DisplayName) ($($user.UserPrincipalName))"
-            }
-            catch {
-
-                try {
-
-                    $group = Get-MgGroup `
-                        -GroupId $Id `
-                        -Property DisplayName `
-                        -ErrorAction Stop
-
-                    $resolved = "$($group.DisplayName) [Group]"
-                }
-                catch {
-                    $resolved = "$Id [Unresolved]"
-                }
-            }
-
-            $identityCache[$Id] = $resolved
-
-            return $resolved
-        }
-        catch {
-
-            $CollectorErrors.Add(
-                (Add-AssessmentError `
-                    -Component $Component `
-                    -Section $Section `
-                    -ErrorRecord $_)
-            )
-
-            return "$Id [Resolution Failed]"
-        }
-    }
 
     # -------------------------------------------------------------------------
     # Main code starts here
     # ------------------------------------------------------------------------
 
-    $CollectorErrors = @()
+    $CollectorErrors = [System.Collections.Generic.List[object]]::new()
     $Component = "EntraCollector"
     $Section = "STARTUP"
 
@@ -121,12 +58,6 @@ function Get-EntraCollector {
     }
 
     # -------------------------------------------------------------------------
-    # Identity Resolution Cache
-    # -------------------------------------------------------------------------
-
-    $identityCache = @{}
-
-    # -------------------------------------------------------------------------
     # Conditional Access
     # -------------------------------------------------------------------------
     $Section = "CONDITIONAL-ACCESS"
@@ -140,9 +71,7 @@ function Get-EntraCollector {
             -Section $Section `
             -Message "Starting Conditional Access collection" `
 
-        $caExport = Get-MgIdentityConditionalAccessPolicy `
-            -All `
-            -ErrorAction Stop
+        $caExport = Get-EntraConditionalAccess
 
         Write-AssessmentLog `
             -Level "INFO" `
@@ -180,7 +109,7 @@ function Get-EntraCollector {
             -Level "INFO" `
             -Component $Component `
             -Section $Section `
-            -Message "Retrieved $($legacyExport.Count) mfa registration records"
+            -Message "Retrieved $($mfaExport.Count) mfa registration records"
 
     }
     catch {
@@ -247,6 +176,138 @@ function Get-EntraCollector {
             -Component $Component `
             -Section $Section `
             -Message "Authentication Methods Policy collected"
+
+    }
+    catch {
+
+        $CollectorErrors.Add(
+            (Add-AssessmentError `
+                -Component $Component `
+                -Section $Section `
+                -ErrorRecord $_)
+        )
+    }
+
+    # -------------------------------------------------------------------------
+    # Security Defaults - Best Practice
+    # -------------------------------------------------------------------------
+    $Section = "SecurityDefaults"
+    $SecurityDefaults = $null
+
+    try {
+
+        Write-AssessmentLog `
+            -Level "INFO" `
+            -Component $Component `
+            -Section $Section `
+            -Message "Collecting Authentication Methods Policy"
+
+        $SecurityDefaults = Get-EntraSecurityDefaults
+
+        Write-AssessmentLog `
+            -Level "INFO" `
+            -Component $Component `
+            -Section $Section `
+            -Message "Authentication Methods Policy collected"
+
+    }
+    catch {
+
+        $CollectorErrors.Add(
+            (Add-AssessmentError `
+                -Component $Component `
+                -Section $Section `
+                -ErrorRecord $_)
+        )
+    }
+
+    # -------------------------------------------------------------------------
+    # Named Locations - Best Practice
+    # -------------------------------------------------------------------------
+    $Section = "NamedLocations"
+    $NamedLocations = $null
+
+    try {
+
+        Write-AssessmentLog `
+            -Level "INFO" `
+            -Component $Component `
+            -Section $Section `
+            -Message "Collecting named locations"
+
+        $NamedLocations = Get-EntraNamedLocations
+
+        Write-AssessmentLog `
+            -Level "INFO" `
+            -Component $Component `
+            -Section $Section `
+            -Message "Named locations collected"
+
+    }
+    catch {
+
+        $CollectorErrors.Add(
+            (Add-AssessmentError `
+                -Component $Component `
+                -Section $Section `
+                -ErrorRecord $_)
+        )
+    }
+
+    # -------------------------------------------------------------------------
+    # Directory Roles - Best Practice
+    # -------------------------------------------------------------------------
+    $Section = "NamedLocations"
+    $DirectoryRoles = $null
+
+    try {
+
+        Write-AssessmentLog `
+            -Level "INFO" `
+            -Component $Component `
+            -Section $Section `
+            -Message "Collecting directory roles"
+
+        $DirectoryRoles = Get-EntraDirectoryRoles
+
+        Write-AssessmentLog `
+            -Level "INFO" `
+            -Component $Component `
+            -Section $Section `
+            -Message "Directory roles collected"
+
+    }
+    catch {
+
+        $CollectorErrors.Add(
+            (Add-AssessmentError `
+                -Component $Component `
+                -Section $Section `
+                -ErrorRecord $_)
+        )
+    }
+
+    # -------------------------------------------------------------------------
+    # Break Glass Accounts - Best Practice
+    # -------------------------------------------------------------------------
+    $Section = "BreakGlassAccounts"
+    $DirectoryRoles = $null
+
+    try {
+
+        Write-AssessmentLog `
+            -Level "INFO" `
+            -Component $Component `
+            -Section $Section `
+            -Message "Collecting break glass accounts"
+
+        $BreakGlassAccounts = Get-EntraBreakGlassAccounts
+
+        Write-AssessmentLog `
+            -Level "INFO" `
+            -Component $Component `
+            -Section $Section `
+            -Message "Break glass accounts collected"
 
     }
     catch {
@@ -351,9 +412,9 @@ function Get-EntraCollector {
 
             LegacyAuthentication = $legacyExport
 
-            SecurityDefaults = $SecurityDefaults
-
             AuthenticationMethods = $AuthenticationMethods
+
+            SecurityDefaults = $SecurityDefaults
 
             NamedLocations = $NamedLocations
 

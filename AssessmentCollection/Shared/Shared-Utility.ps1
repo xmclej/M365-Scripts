@@ -117,3 +117,76 @@ function New-AssessmentFinding {
         Evidence       = $Evidence
     }
 }
+
+# -------------------------------------------------------------------------
+# FUNCTION: Resolve Identity Name
+# ------------------------------------------------------------------------
+function Resolve-EntraIdentity {
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Id
+    )
+
+    $script:RunId = $RunId
+    $script:LogFile = $LogFile
+    $script:IdentityCache = @{}
+
+    try {
+
+        if ([string]::IsNullOrWhiteSpace($Id)) {
+            return $null
+        }
+
+        if ($Id -in @("All","None","GuestsOrExternalUsers")) {
+            return $Id
+        }
+
+        if ($script:IdentityCache.ContainsKey($Id)) {
+            return $script:IdentityCache[$Id]
+        }
+
+        $resolved = $Id
+
+        try {
+
+            $user = Get-MgUser `
+                -UserId $Id `
+                -Property DisplayName,UserPrincipalName `
+                -ErrorAction Stop
+
+            $resolved = "$($user.DisplayName) ($($user.UserPrincipalName))"
+        }
+        catch {
+
+            try {
+
+                $group = Get-MgGroup `
+                    -GroupId $Id `
+                    -Property DisplayName `
+                    -ErrorAction Stop
+
+                $resolved = "$($group.DisplayName) [Group]"
+            }
+            catch {
+
+                $resolved = "$Id [Unresolved]"
+            }
+        }
+
+        $script:IdentityCache[$Id] = $resolved
+
+        return $resolved
+    }
+    catch {
+
+        Write-AssessmentLog `
+            -Level "ERROR" `
+            -Component "SharedUtility" `
+            -Section "ResolveEntraIdentity" `
+            -Message $_.Exception.Message
+
+        return "$Id [Resolution Failed]"
+    }
+}

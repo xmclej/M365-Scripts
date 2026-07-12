@@ -6,7 +6,7 @@ function Get-EntraMFARegistration {
         -All `
         -ErrorAction Stop
 
-    return ForEach-Object $user in $mfaDetails {
+    foreach ($user in $mfaDetails) {
 
         [PSCustomObject]@{
             UserPrincipalName = $user.UserPrincipalName
